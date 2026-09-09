@@ -1,4 +1,4 @@
-# ASTRA-GUARD — SIH 2026
+# SAGE — SIH 2026
 
 AI-assisted multi-parameter anomaly detection and risk-prioritisation
 system. It flags unusual component behaviour beyond simple PASS/FAIL
