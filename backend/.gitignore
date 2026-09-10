@@ -1,0 +1,4 @@
+# Local SQLite databases (Member 2's default DATABASE_URL target)
+*.db
+*.sqlite
+*.sqlite3
