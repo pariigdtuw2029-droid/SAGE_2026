@@ -1,9 +1,8 @@
 """
 Component service layer.
 
-Same boundary contract as lot_service.py: routers call these
-functions only, so Member 2 can swap the implementation for real
-database queries without touching `app/api/components.py`.
+Same boundary contract as lot_service.py: routers call these functions only.
+Currently backed by mock data; Member 2's database layer can be wired here later.
 """
 
 from typing import Optional
