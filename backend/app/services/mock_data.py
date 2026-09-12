@@ -72,6 +72,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 15.0,
         "decision": "PASS",
         "confidence": 0.94,
+        "slope_reject_flag": False,
+        "reliability_tier": "Space-Safe",
     },
     "C102": {
         "component_id": "C102",
@@ -83,6 +85,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 52.0,
         "decision": "MONITOR",
         "confidence": 0.81,
+        "slope_reject_flag": False,
+        "reliability_tier": "Borderline",
     },
     "C103": {
         "component_id": "C103",
@@ -94,6 +98,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 68.0,
         "decision": "HOLD",
         "confidence": 0.77,
+        "slope_reject_flag": False,
+        "reliability_tier": "Borderline",
     },
     "C104": {
         "component_id": "C104",
@@ -105,6 +111,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 87.0,
         "decision": "REJECT",
         "confidence": 0.90,
+        "slope_reject_flag": True,
+        "reliability_tier": "High-Risk",
     },
     "C201": {
         "component_id": "C201",
@@ -116,6 +124,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 5.0,
         "decision": "PASS",
         "confidence": 0.97,
+        "slope_reject_flag": False,
+        "reliability_tier": "Space-Safe",
     },
     "C202": {
         "component_id": "C202",
@@ -127,6 +137,8 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "risk_score": 7.0,
         "decision": "PASS",
         "confidence": 0.96,
+        "slope_reject_flag": False,
+        "reliability_tier": "Space-Safe",
     },
 }
 
@@ -159,11 +171,14 @@ MOCK_REPORTS: Dict[str, dict] = {
         "decision": "REJECT",
         "confidence": 0.90,
         "reasons": [
-            "Strong deviation from lot baseline",
-            "High early drift",
-            "Predicted trajectory crosses safety envelope",
+            "Batch-relative outlier (z=9.61 vs its own lot)",
+            "[SHAP] Anomaly score driven mainly by Leakage_delta_24h(+0.04), Leakage_pct_change_24h(+0.03)",
+            "[SHAP] Predicted Leakage 168h drift driven mainly by Leakage_slope(+0.582), Vth_slope(+0.151)",
+            "Predicted 168h drift rate exceeds the Safe-population safety slope — flagged for early rejection",
         ],
-        "model_version": "demo-0.1",
+        "model_version": "sage-1.1",
+        "slope_reject_flag": True,
+        "reliability_tier": "High-Risk",
     },
 }
 
@@ -193,7 +208,9 @@ def get_default_report(component_id: str) -> dict:
         "decision": component.get("decision", "PASS"),
         "confidence": component.get("confidence"),
         "reasons": ["No significant deviation detected"],
-        "model_version": "demo-0.1",
+        "model_version": "sage-1.1",
+        "slope_reject_flag": component.get("slope_reject_flag", False),
+        "reliability_tier": component.get("reliability_tier", "Space-Safe"),
     }
 
 

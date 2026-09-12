@@ -15,6 +15,14 @@ class ComponentResponse(BaseModel):
     risk_score: Optional[float] = None
     decision: Optional[str] = None
     confidence: Optional[float] = None
+    slope_reject_flag: Optional[bool] = Field(
+        default=None,
+        description="True if predicted 168h drift rate exceeds Safe-population threshold",
+    )
+    reliability_tier: Optional[str] = Field(
+        default=None,
+        description="Assigned reliability tier (Space-Safe, Borderline, or High-Risk)",
+    )
 
 
 class TrajectoryPoint(BaseModel):
@@ -38,5 +46,16 @@ class ComponentReportResponse(BaseModel):
     risk_score: Optional[float] = None
     decision: str
     confidence: Optional[float] = None
-    reasons: List[str] = Field(default_factory=list)
+    reasons: List[str] = Field(
+        default_factory=list,
+        description="Explanations for the risk call (physics-based and [SHAP] attributions)",
+    )
     model_version: Optional[str] = None
+    slope_reject_flag: Optional[bool] = Field(
+        default=None,
+        description="True if predicted 168h drift rate exceeds Safe-population threshold",
+    )
+    reliability_tier: Optional[str] = Field(
+        default=None,
+        description="Assigned reliability tier (Space-Safe, Borderline, or High-Risk)",
+    )

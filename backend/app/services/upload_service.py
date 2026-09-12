@@ -25,9 +25,10 @@ class UploadValidationResult:
 
 
 def validate_filename(filename: Optional[str]) -> UploadValidationResult:
-    if not filename:
+    if not filename or not filename.strip():
         return UploadValidationResult(False, "No filename provided.")
-    if not filename.lower().endswith(ALLOWED_EXTENSIONS):
+    clean_name = filename.strip()
+    if clean_name.lower() == ".csv" or not clean_name.lower().endswith(ALLOWED_EXTENSIONS):
         return UploadValidationResult(
             False, "Unsupported file type. Only .csv files are accepted."
         )
@@ -35,7 +36,7 @@ def validate_filename(filename: Optional[str]) -> UploadValidationResult:
 
 
 def validate_content(content: bytes) -> UploadValidationResult:
-    if content is None or len(content) == 0:
+    if content is None or len(content) == 0 or len(content.strip()) == 0:
         return UploadValidationResult(False, "Uploaded file is empty.")
     if len(content) > MAX_UPLOAD_SIZE_BYTES:
         return UploadValidationResult(

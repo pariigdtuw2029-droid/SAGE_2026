@@ -42,3 +42,29 @@ def test_upload_oversized_file(client):
 def test_upload_missing_file(client):
     response = client.post("/api/burnin/upload")
     assert response.status_code == 422
+
+
+def test_upload_whitespace_filename(client):
+    response = client.post(
+        "/api/burnin/upload",
+        files={"file": ("   ", b"a,b\n1,2\n", "text/csv")},
+    )
+    assert response.status_code == 400
+    assert "filename" in response.json()["detail"].lower()
+
+
+def test_upload_dot_csv_only_filename(client):
+    response = client.post(
+        "/api/burnin/upload",
+        files={"file": (".csv", b"a,b\n1,2\n", "text/csv")},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_whitespace_only_content(client):
+    response = client.post(
+        "/api/burnin/upload",
+        files={"file": ("data.csv", b"   \n\r\n   ", "text/csv")},
+    )
+    assert response.status_code == 400
+    assert "empty" in response.json()["detail"].lower()

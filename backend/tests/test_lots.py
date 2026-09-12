@@ -29,3 +29,15 @@ def test_get_lot_summary(client):
 def test_get_missing_lot_summary_returns_404(client):
     response = client.get("/api/lots/DOES_NOT_EXIST/summary")
     assert response.status_code == 404
+
+
+def test_get_lot_invalid_id_returns_400(client):
+    response = client.get("/api/lots/%20")
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()
+
+
+def test_get_lot_summary_invalid_id_returns_400(client):
+    response = client.get("/api/lots/%20/summary")
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()

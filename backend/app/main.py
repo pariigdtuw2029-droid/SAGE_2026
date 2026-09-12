@@ -1,6 +1,8 @@
 import logging
 import os
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,10 +16,18 @@ from app.api.alerts import router as alerts_router
 logger = logging.getLogger("astra_guard")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("ASTRA-GUARD API startup complete (v1.0.0)")
+    yield
+    logger.info("ASTRA-GUARD API shutdown complete")
+
+
 app = FastAPI(
     title="ASTRA-GUARD API",
     description="Backend API for the ASTRA-GUARD anomaly detection system",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 
