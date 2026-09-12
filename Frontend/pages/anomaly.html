@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Anomaly Detection — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <div class="kpi-row" id="kpis"></div>
+
+    <section class="box">
+      <h2 class="box-title">Anomaly Scatter Plot</h2>
+      <p class="box-sub">Y: anomaly score · X: drift score · color: decision</p>
+      <canvas class="chart" id="scatter"></canvas>
+      <div class="legend">
+        <span class="item"><span class="dot safe"></span> Pass</span>
+        <span class="item"><span class="dot monitor"></span> Monitor</span>
+        <span class="item"><span class="dot hold"></span> Hold</span>
+        <span class="item"><span class="dot reject"></span> Reject</span>
+      </div>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Top Anomalies Table</h2>
+      <div class="table-wrap">
+        <table class="data" id="topTable">
+          <thead><tr><th>ID</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Lot</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, charts, topbar, renderSidebar, badge } = window.SAGE;
+
+  let threshold = 50;
+  renderSidebar("anomaly.html");
+
+  function topbar_() {
+    topbar("Anomaly Detection", null, null, `
+      <label class="ctl" style="flex-direction:row;align-items:center;gap:8px;text-transform:none;">
+        Threshold
+        <input type="range" id="thr" min="20" max="90" value="${threshold}" style="width:120px;" />
+        <span class="kpi-value" style="font-size:14px;" id="thrVal">${threshold}</span>
+      </label>
+      <button class="btn" id="apply">[Apply]</button>`);
+  }
+  topbar_();
+
+  function classify() {
+    // Re-bucket purely by anomaly score crossing the threshold, for live feedback.
+    return data.components.map((c) => {
+      const over = c.anomaly >= threshold;
+      const critical = c.anomaly >= threshold + 30;
+      return { c, cls: critical ? "CRITICAL" : over ? "ANOMALOUS" : "NORMAL" };
+    });
+  }
+
+  function render() {
+    const buckets = classify();
+    const n = (k) => buckets.filter((b) => b.cls === k).length;
+    document.getElementById("kpis").innerHTML = [
+      ["Normal", n("NORMAL").toLocaleString()],
+      ["Anomalous", n("ANOMALOUS").toLocaleString()],
+      ["Critical", n("CRITICAL").toLocaleString()],
+      ["Total", data.components.length.toLocaleString()],
+    ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+
+    charts.scatterChart(document.getElementById("scatter"),
+      buckets.map(({ c, cls }) => ({
+        x: c.drift, y: c.anomaly,
+        color: cls === "CRITICAL" ? window.SAGE.COLORS.reject
+             : cls === "ANOMALOUS" ? window.SAGE.COLORS.monitor
+             : window.SAGE.COLORS.safe,
+        r: cls === "CRITICAL" ? 3.4 : 2.6,
+      })),
+      { height: 280, threshold, axisLabels: { x: "Drift Score", y: "Anomaly" } });
+
+    const top = [...buckets].filter((b) => b.cls !== "NORMAL")
+      .sort((a, b) => b.c.risk - a.c.risk).slice(0, 12);
+    document.querySelector("#topTable tbody").innerHTML = top.map(({ c, cls }) => `
+      <tr class="click" data-c="${c.id}">
+        <td>${c.id}</td><td>${c.anomaly}</td><td>${c.drift}</td><td>${c.risk}</td>
+        <td>${badge(c.decision)}</td><td>${c.lotId}</td>
+      </tr>`).join("");
+  }
+
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "thr") {
+      threshold = +e.target.value;
+      document.getElementById("thrVal").textContent = threshold;
+      render();
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "apply") window.SAGE.toast(`Threshold ${threshold} applied → risk_assessments re-scored`);
+  });
+  document.querySelector("#topTable tbody").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr.click");
+    if (tr) location.href = `component-detail.html?comp=${tr.dataset.c}`;
+  });
+
+  render();
+</script>
+</body>
+</html>

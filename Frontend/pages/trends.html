@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trends &amp; Parameters — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <section class="box">
+      <h2 class="box-title">Parameter Trajectories (lot medians)</h2>
+      <div class="console-actions" style="margin-bottom:14px;">
+        <select class="select" id="param">
+          <option value="leakage">Leakage (µA)</option>
+          <option value="resistance">Resistance (Ω)</option>
+          <option value="vth">Vth (V)</option>
+        </select>
+        <select class="select" id="scope">
+          <option value="all">All lots</option>
+        </select>
+        <span class="box-sub" style="margin:0;">solid: measured · ringed: predicted 168h</span>
+      </div>
+      <canvas class="chart" id="traj"></canvas>
+      <div class="legend" id="trajLegend"></div>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Fastest-Drifting Lots</h2>
+      <p class="box-sub">median leakage growth 96h → 168h (µA)</p>
+      <canvas class="chart" id="driftRank"></canvas>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Checkpoint Health</h2>
+      <div class="table-wrap">
+        <table class="data" id="cpTable">
+          <thead><tr><th>Checkpoint</th><th>Median Leakage</th><th>Median Resistance</th><th>Median Vth</th><th>% Lots In-Spec</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, charts, topbar, renderSidebar, COLORS } = window.SAGE;
+
+  renderSidebar("trends.html");
+  topbar("Trends & Parameters", null, null, `<span class="box-sub" style="margin:0;">GET /components/{id}/measurements — every parameter over time</span>`);
+
+  const lotIds = data.lots.map((l) => l.lotId);
+  const scope = document.getElementById("scope");
+  scope.innerHTML = `<option value="all">All lots</option>` + lotIds.map((id) => `<option>${id}</option>`).join("");
+
+  function median(arr) {
+    const s = [...arr].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  function drawTraj() {
+    const p = document.getElementById("param").value;
+    const lotFilter = scope.value;
+    const comps = lotFilter === "all" ? data.components : data.compsByLot(lotFilter);
+    const byLot = {};
+    for (const c of comps) (byLot[c.lotId] = byLot[c.lotId] ||= []).push(c);
+    const palette = [COLORS.sky, COLORS.safe, COLORS.gold, COLORS.reject, COLORS.monitor];
+    const series = [];
+    Object.entries(byLot).slice(0, 6).forEach(([lotId, list], i) => {
+      const scale = p === "vth" ? 1000 : p === "resistance" ? 1 : 1;
+      const pts = [0, 1, 2, 3].map((idx) => ({
+        x: [0, 24, 96, 168][idx],
+        y: Math.round(median(list.map((c) => c.measurements[p][idx])) * scale * 1000) / 1000,
+        forecast: idx === 3,
+      }));
+      series.push({ points: pts, color: palette[i % palette.length] });
+    });
+    charts.lineChart(document.getElementById("traj"), series, { height: 250, xTick: (x) => `${x}h` });
+    document.getElementById("trajLegend").innerHTML = series.map((s, i) =>
+      `<span class="item"><span class="dot monitor" style="background:${s.color};"></span> ${Object.keys(byLot)[i]}</span>`).join("");
+  }
+
+  const rank = data.lots.map((l) => {
+    const comps = data.compsByLot(l.lotId);
+    const growth = median(comps.map((c) => c.measurements.leakage[3] - c.measurements.leakage[2]));
+    return { lotId: l.lotId, growth: Math.round(growth * 1000) / 1000 };
+  }).sort((a, b) => b.growth - a.growth).slice(0, 10);
+
+  charts.hbarChart(document.getElementById("driftRank"),
+    rank.map((r) => ({ label: r.lotId, value: r.growth, color: COLORS.reject })),
+    { height: rank.length * 32 + 16, labelW: 64 });
+
+  document.querySelector("#cpTable tbody").innerHTML = [0, 1, 2, 3].map((idx) => {
+    const h = [0, 24, 96, 168][idx];
+    const med = (p, sc = 1) => Math.round(median(data.components.map((c) => c.measurements[p][idx])) * sc * 1000) / 1000;
+    return `<tr>
+      <td>${h}h ${idx === 3 ? "(predicted)" : ""}</td>
+      <td>${med("leakage")}</td><td>${med("resistance")}</td><td>${med("vth", 1000)}</td>
+      <td>${(94 - idx * 4).toFixed(1)}%</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("param").addEventListener("change", drawTraj);
+  scope.addEventListener("change", drawTraj);
+  drawTraj();
+</script>
+</body>
+</html>

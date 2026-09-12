@@ -367,18 +367,30 @@ button:focus-visible {
   width: 112%;
   height: 112%;
   object-fit: cover;
-  filter: blur(60px) saturate(115%) brightness(0.55);
+  filter: blur(40px) saturate(110%) brightness(0.6);
   transform: scale(1.08);
 }
 
 .layer-sharp {
   position: relative;
-  width: 94%;
-  height: 90%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 30px 60px rgba(0,0,0,0.55));
-  -webkit-mask-image: radial-gradient(ellipse 96% 96% at 50% 50%, #000 78%, transparent 100%);
-  mask-image: radial-gradient(ellipse 96% 96% at 50% 50%, #000 78%, transparent 100%);
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.5));
+}
+
+/* Fine film grain over the stage — cinematic finish.
+   (Rocket frames were offline-upscaled to 1280x720 with Lanczos + unsharp,
+   so no per-sequence size cap is needed anymore.) */
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)' opacity='0.6'/></svg>");
 }
 
 .vignette {
@@ -461,28 +473,49 @@ button:focus-visible {
 }
 
 .platform-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--deep-navy);
-  border: 1px solid rgba(147, 166, 184, 0.16);
-  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(17, 28, 46, 0.72), rgba(8, 13, 24, 0.85));
+  border: 1px solid rgba(147, 166, 184, 0.18);
+  border-radius: 20px;
   overflow: hidden;
-  transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 30px 60px -34px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(238, 243, 247, 0.06);
+  transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.platform-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  pointer-events: none;
+  background: radial-gradient(480px 180px at 85% -10%, rgba(143, 201, 250, 0.1), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
 }
 
 .platform-card:hover {
-  transform: translateY(-6px);
-  border-color: rgba(143, 201, 250, 0.45);
-  box-shadow: 0 24px 48px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(143, 201, 250, 0.08);
+  transform: translateY(-8px);
+  border-color: rgba(143, 201, 250, 0.5);
+  box-shadow:
+    0 34px 70px -30px rgba(0, 0, 0, 0.95),
+    0 0 42px -14px rgba(143, 201, 250, 0.35),
+    inset 0 1px 0 rgba(238, 243, 247, 0.08);
 }
+
+.platform-card:hover::after { opacity: 1; }
 
 .platform-card-visual {
   position: relative;
-  height: 132px;
+  height: 148px;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
+    radial-gradient(220px 90px at 50% 115%, rgba(143, 201, 250, 0.14), transparent 70%),
     repeating-linear-gradient(
       135deg,
       rgba(143, 201, 250, 0.05) 0px,
@@ -490,30 +523,41 @@ button:focus-visible {
       transparent 1px,
       transparent 26px
     ),
-    linear-gradient(160deg, var(--navy-glow) 0%, var(--deep-navy) 78%);
+    linear-gradient(160deg, #12233a 0%, #0a1422 78%);
   border-bottom: 1px solid rgba(147, 166, 184, 0.16);
+}
+
+.platform-card-visual::before {
+  content: "";
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 1px solid rgba(143, 201, 250, 0.22);
+  box-shadow: 0 0 40px -8px rgba(143, 201, 250, 0.25), inset 0 0 24px rgba(143, 201, 250, 0.1);
 }
 
 .platform-card-index {
   position: absolute;
   top: 14px;
-  left: 16px;
+  left: 18px;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--steel-dim);
 }
 
 .platform-card-icon {
-  width: 42px;
-  height: 42px;
+  position: relative;
+  width: 40px;
+  height: 40px;
   color: var(--sky);
-  filter: drop-shadow(0 0 14px rgba(143, 201, 250, 0.35));
-  transition: transform 0.35s ease;
+  filter: drop-shadow(0 0 16px rgba(143, 201, 250, 0.5));
+  transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .platform-card:hover .platform-card-icon {
-  transform: scale(1.08);
+  transform: scale(1.14) translateY(-2px);
 }
 
 .platform-card-body {
@@ -526,7 +570,8 @@ button:focus-visible {
 .platform-card-name {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
-  font-size: 19px;
+  font-size: 20px;
+  letter-spacing: 0.005em;
   color: var(--signal);
   margin: 0 0 10px;
 }
@@ -562,6 +607,20 @@ button:focus-visible {
   .platform-grid {
     grid-template-columns: 1fr;
   }
+}
+
+a.platform-card {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.platform-card:hover .platform-card-name {
+  color: var(--sky);
+}
+
+.platform-card-name {
+  transition: color 0.35s ease;
 }
 
 /* ---------- Closing ---------- */
@@ -641,8 +700,8 @@ button:focus-visible {
     padding: 0 16px;
   }
   .layer-sharp {
-    width: 96%;
-    height: 82%;
+    width: 100%;
+    height: 100%;
   }
   .hero {
     padding-bottom: 72px;

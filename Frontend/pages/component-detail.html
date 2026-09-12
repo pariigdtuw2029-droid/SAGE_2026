@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Component Analysis — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <section class="box">
+      <h2 class="box-title">Status Card</h2>
+      <div class="kpi-row" id="statusRow" style="margin-bottom:0;"></div>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Parameter Drift Chart</h2>
+      <p class="box-sub">Solid = measured · ringed = predicted 168h</p>
+      <canvas class="chart" id="driftChart"></canvas>
+      <div class="legend" id="driftLegend"></div>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Risk Breakdown <span style="color:var(--steel-dim);text-transform:none;">(Anomaly + Drift + Uncertainty)</span></h2>
+      <canvas class="chart" id="riskBars"></canvas>
+    </section>
+
+    <section class="box">
+      <h2 class="box-title">Why This Component Was Flagged</h2>
+      <ul class="exp-list" id="expList"></ul>
+    </section>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, charts, topbar, renderSidebar, param, dotFor } = window.SAGE;
+
+  renderSidebar("components.html");
+  const id = param("comp") || "C1739";
+  const c = data.compById(id) || data.components[0];
+  const backLot = param("lot");
+
+  const fromLot = backLot && backLot === c.lotId ? backLot : c.lotId;
+  topbar(
+    `Component ${c.id}`,
+    fromLot ? `lot-detail.html?lot=${fromLot}` : "components.html",
+    fromLot ? `Back to ${fromLot}` : "Back to Database"
+  );
+
+  const tierDot = c.tier === "Space-Safe" ? "safe" : c.tier === "High-Risk" ? "reject" : "monitor";
+  document.getElementById("statusRow").innerHTML = [
+    ["Risk Score", c.risk],
+    ["Decision", `${c.decision} · conf ${c.confidence}`],
+    ["Reliability Index", c.reliabilityIndex],
+    ["Tier", c.tier],
+    ["Lot / Type", `${c.lotId} · ${c.type}`],
+  ].map(([l, v], i) => `
+    <div class="kpi">
+      <div class="kpi-label">${l}</div>
+      <div class="kpi-value" style="font-size:20px;">${v} ${i === 0 ? `<span class="dot ${dotFor(c.decision)}"></span>` : ""}</div>
+      ${i === 3 ? `<div class="kpi-sub"><span class="dot ${tierDot}"></span> ${c.tier === "Space-Safe" ? "certified" : c.tier === "High-Risk" ? "flagged ✕" : "watch"}</div>` : ""}
+    </div>`).join("");
+
+  const m = c.measurements;
+  // Index each parameter to its 0h reading (= 100) so all three fit one axis
+  // and the drift direction/magnitude is instantly readable.
+  const idx = (vals) => vals.map((v) => Math.round((v / vals[0]) * 1000) / 10);
+  charts.lineChart(document.getElementById("driftChart"), [
+    { points: idx(m.leakage).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.reject },
+    { points: idx(m.resistance).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.sky },
+    { points: idx(m.vth).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.gold },
+  ], {
+    height: 250,
+    xTick: (x) => `${x}h`,
+  });
+  document.getElementById("driftLegend").innerHTML = `
+    <span class="item"><span class="dot reject"></span> Leakage — ${m.leakage[0]} → ${m.leakage[3]} µA</span>
+    <span class="item"><span class="dot sky" style="background:var(--sky);"></span> Resistance — ${m.resistance[0]} → ${m.resistance[3]} Ω</span>
+    <span class="item"><span class="dot hold"></span> Vth — ${m.vth[0]} → ${m.vth[3]} V</span>
+    <span class="item" style="color:var(--steel-dim);">y-axis: index, 0h = 100</span>`;
+
+  charts.hbarChart(document.getElementById("riskBars"), [
+    { label: "Anomaly Score", value: c.anomaly,     color: window.SAGE.COLORS.sky },
+    { label: "Drift Score",   value: c.drift,       color: window.SAGE.COLORS.gold },
+    { label: "Uncertainty",   value: c.uncertainty, color: window.SAGE.COLORS.steel },
+    { label: "Risk Score",    value: c.risk,        color: c.risk >= 65 ? window.SAGE.COLORS.reject : c.risk >= 35 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
+  ], { height: 190 });
+
+  const ul = document.getElementById("expList");
+  ul.innerHTML = c.explanations.map((e) => `<li>${e}</li>`).join("");
+</script>
+</body>
+</html>
