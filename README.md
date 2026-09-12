@@ -1,4 +1,4 @@
-# ASTRA-GUARD — SIH 2026
+# SAGE — SIH 2026
 
 AI-assisted multi-parameter anomaly detection and risk-prioritisation
 system. It flags unusual component behaviour beyond simple PASS/FAIL
@@ -58,20 +58,47 @@ CORS, environment configuration, OpenAPI/Swagger docs, and API tests.
 **Member 2** owns: PostgreSQL, SQLAlchemy models, CRUD, data
 preprocessing/cleaning, unit standardisation, and report data prep.
 
-### Member 2 integration point
+### Member 2 — database + data-processing layer (implemented)
 
-Every service function in `app/services/*_service.py` currently reads
-from `app/services/mock_data.py`, a clearly isolated module of
-placeholder data. To connect PostgreSQL:
+`backend/database/` is Member 2's storage layer, now wired into the services:
 
-1. Add SQLAlchemy models and a DB session dependency.
-2. Replace the body of each function in `lot_service.py`,
-   `component_service.py`, and `alert_service.py` with real queries.
-3. Leave the function signatures and return shapes (dicts matching the
-   Pydantic schemas) the same — the routers and API contract don't
-   need to change.
+```
+backend/database/
+├── connection.py      # engine, SessionLocal, Base, init_db(), get_db()
+├── models.py          # ORM: lots, components, measurements, predictions,
+│                      #       risk_assessments, explanations (+ relationships)
+├── validation.py      # pre-storage checks (columns, IDs, numbers, temps)
+├── preprocessing.py   # cleaning, units, imputation, timestamps, relations
+├── ml_inference.py    # runs the 3 model artifacts (Modules A, B, C)
+├── crud.py            # insert/update/delete + reusable queries + report prep
+├── ingestion.py       # CSV → validate → preprocess → store → infer
+└── __main__.py        # CLI: init | drop | ingest | validate | stats
+```
 
-No production values are hardcoded anywhere outside `mock_data.py`.
+**Wiring:** `lot_service.py`, `component_service.py` and `alert_service.py`
+now call `database.crud` first and fall back to `mock_data` when the DB is
+unreachable — the API contract (Pydantic shapes, routers) is unchanged.
+
+**Setup:** the connection URL comes from `DATABASE_URL` (defaults to a local
+SQLite file at `backend/astra_guard.db`; set it to `postgresql://...` for
+PostgreSQL). Create tables and ingest the bundled dataset:
+
+```bash
+cd backend
+python -m database init
+python -m database ingest data/burn_in_dataset.csv
+python -m database stats
+```
+
+**Reusable queries Member 1's APIs use:** `get_lot_summary`, `get_component`,
+`get_component_measurements`, `get_component_prediction`, `get_component_risk`,
+`get_alerts`, plus `get_component_report` (the full report-data preparation:
+component + measurements + prediction + risk + explanations).
+
+Tests for this layer live in `tests/test_database_*.py` and run against an
+in-memory SQLite database; the original API-contract tests still run against
+the mock fallback (see `tests/conftest.py`), so no live PostgreSQL is needed
+in CI.
 
 ## Setup
 

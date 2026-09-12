@@ -1,5 +1,6 @@
 """
 Alert service layer. Same boundary contract as the other services.
+Currently backed by mock data; Member 2's database layer can be wired here later.
 """
 
 from typing import List

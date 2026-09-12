@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lot Analytics — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <section class="box">
+      <h2 class="box-title">Reject Rate by Lot</h2>
+      <p class="box-sub">Systemic issues show up as whole bars, not single units</p>
+      <canvas class="chart" id="rejBars"></canvas>
+    </section>
+
+    <div class="grid-2">
+      <section class="box">
+        <h2 class="box-title">Stress Temperature vs Avg Risk</h2>
+        <canvas class="chart" id="tempScatter"></canvas>
+        <div class="legend"><span class="item"><span class="dot reject"></span> lot</span></div>
+      </section>
+      <section class="box">
+        <h2 class="box-title">Decision Mix per Lot</h2>
+        <canvas class="chart" id="mixStack"></canvas>
+        <div class="legend">
+          <span class="item"><span class="dot safe"></span> Pass</span>
+          <span class="item"><span class="dot monitor"></span> Monitor</span>
+          <span class="item"><span class="dot hold"></span> Hold</span>
+          <span class="item"><span class="dot reject"></span> Reject</span>
+        </div>
+      </section>
+    </div>
+
+    <section class="box">
+      <h2 class="box-title">Lot Comparison Table</h2>
+      <div class="table-wrap">
+        <table class="data" id="lotTable">
+          <thead><tr><th>Lot</th><th>Type</th><th>Temp</th><th>Components</th><th>Avg Risk</th><th>Reject %</th><th>Worst Component</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, charts, topbar, renderSidebar, COLORS } = window.SAGE;
+
+  renderSidebar("lot-analytics.html");
+  topbar("Lot Analytics", null, null, `<span class="box-sub" style="margin:0;">cross-batch statistics — GET /lots</span>`);
+
+  const stats = data.lots.map((l) => {
+    const comps = data.compsByLot(l.lotId);
+    const avgRisk = comps.reduce((a, c) => a + c.risk, 0) / comps.length;
+    const worst = comps.reduce((a, c) => (c.risk > a.risk ? c : a), comps[0]);
+    return { ...l, avgRisk: Math.round(avgRisk * 10) / 10, rejPct: Math.round(l.reject / l.size * 1000) / 10, worst };
+  });
+
+  charts.hbarChart(document.getElementById("rejBars"),
+    stats.map((s) => ({ label: s.lotId, value: s.rejPct, color: s.rejPct > 4 ? COLORS.reject : s.rejPct > 2 ? COLORS.hold : COLORS.sky })),
+    { height: stats.length * 26 + 16, labelW: 64 });
+
+  charts.scatterChart(document.getElementById("tempScatter"),
+    stats.map((s) => {
+      const norm = (s.temp - -40) / (125 - -40); // -40..125 → 0..1
+      return { x: Math.round(norm * 100), y: s.avgRisk, color: COLORS.reject, r: 4 };
+    }),
+    { height: 240, axisLabels: { x: "stress temp →", y: "avg risk" } });
+
+  // Stacked decision mix per lot
+  (function mixStack() {
+    const canvas = document.getElementById("mixStack");
+    const H = 240;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth || canvas.parentElement.clientWidth;
+    canvas.width = w * dpr; canvas.height = H * dpr;
+    canvas.style.height = H + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pad = { l: 34, r: 10, t: 12, b: 40 };
+    const bw = (w - pad.l - pad.r) / stats.length;
+    const maxY = Math.max(...stats.map((s) => s.size));
+    const segs = [["pass", COLORS.safe], ["monitor", COLORS.monitor], ["hold", COLORS.hold], ["reject", COLORS.reject]];
+    stats.forEach((s, i) => {
+      let y = H - pad.b;
+      for (const [k, color] of segs) {
+        const hh = (s[k] / maxY) * (H - pad.t - pad.b);
+        y -= hh;
+        ctx.fillStyle = color;
+        ctx.fillRect(pad.l + i * bw + 2, y, bw - 4, hh);
+      }
+      ctx.fillStyle = "#5c6c7c";
+      ctx.font = "9.5px 'IBM Plex Mono', monospace";
+      ctx.save();
+      ctx.translate(pad.l + i * bw + bw / 2 + 8, H - 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(s.lotId, 0, 0);
+      ctx.restore();
+    });
+  })();
+
+  document.querySelector("#lotTable tbody").innerHTML = stats.map((s) => `
+    <tr class="click" data-lot="${s.lotId}">
+      <td>${s.lotId}</td><td>${s.type}</td><td>${s.temp}°C</td><td>${s.size}</td>
+      <td>${s.avgRisk}</td><td>${s.rejPct}%</td><td>${s.worst.id} (${s.worst.risk})</td>
+    </tr>`).join("");
+  document.querySelectorAll("#lotTable tr.click").forEach((tr) =>
+    tr.addEventListener("click", () => location.href = `lot-detail.html?lot=${tr.dataset.lot}`));
+</script>
+</body>
+</html>

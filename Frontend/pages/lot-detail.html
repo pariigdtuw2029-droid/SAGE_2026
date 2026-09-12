@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lot Detail — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <div class="kpi-row" id="kpis"></div>
+
+    <section class="box">
+      <h2 class="box-title">Component Grid <span style="color:var(--steel-dim);text-transform:none;">(color-coded by risk)</span></h2>
+      <p class="box-sub">Click any component for deep-dive</p>
+      <div class="chip-grid" id="chipGrid"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="box">
+        <h2 class="box-title">Lot Risk Trend</h2>
+        <p class="box-sub">Components by decision bucket</p>
+        <canvas class="chart" id="bucketBars"></canvas>
+      </section>
+      <section class="box">
+        <h2 class="box-title">Lot Reliability Spread</h2>
+        <canvas class="chart" id="spread"></canvas>
+        <div class="legend">
+          <span class="item"><span class="dot safe"></span> Space-Safe</span>
+          <span class="item"><span class="dot monitor"></span> Borderline</span>
+          <span class="item"><span class="dot reject"></span> High-Risk</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, charts, topbar, renderSidebar, param } = window.SAGE;
+
+  renderSidebar("burn-in.html");
+  const lotId = param("lot") || "LOT-03";
+  const lot = data.lotById(lotId);
+  const comps = data.compsByLot(lotId);
+
+  topbar(`${lotId}: ${lot.type} (${lot.tempLabel})`, "burn-in.html", "Back to Lots");
+
+  const avgRisk = (comps.reduce((a, c) => a + c.risk, 0) / comps.length).toFixed(1);
+  const highRisk = comps.filter((c) => c.risk >= 65).length;
+  document.getElementById("kpis").innerHTML = [
+    ["Temperature", `${lot.temp}°C`],
+    ["Components", lot.size],
+    ["Avg Risk", avgRisk],
+    ["High Risk", highRisk],
+  ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+
+  const grid = document.getElementById("chipGrid");
+  grid.innerHTML = comps.slice(0, 120).map((c) => `
+    <div class="chip" data-c="${c.id}" title="Risk ${c.risk} · ${c.decision}">
+      <div class="chip-id">${c.id}</div>
+      <span class="dot ${window.SAGE.dotFor(c.decision)}"></span>
+    </div>`).join("");
+  if (comps.length > 120) {
+    const more = document.createElement("p");
+    more.className = "box-sub";
+    more.style.marginTop = "12px";
+    more.textContent = `+ ${comps.length - 120} more components — use the Component Database search for the full list`;
+    grid.after(more);
+  }
+  grid.querySelectorAll(".chip").forEach((ch) =>
+    ch.addEventListener("click", () => location.href = `component-detail.html?comp=${ch.dataset.c}&lot=${lotId}`));
+
+  const t = { pass: lot.pass, monitor: lot.monitor, hold: lot.hold, reject: lot.reject };
+  charts.hbarChart(document.getElementById("bucketBars"), [
+    { label: `Safe (${t.pass})`,       value: t.pass,    color: window.SAGE.COLORS.safe },
+    { label: `Monitor (${t.monitor})`, value: t.monitor, color: window.SAGE.COLORS.monitor },
+    { label: `Hold (${t.hold})`,       value: t.hold,    color: window.SAGE.COLORS.hold },
+    { label: `Reject (${t.reject})`,   value: t.reject,  color: window.SAGE.COLORS.reject },
+  ], { height: 180 });
+
+  charts.scatterChart(document.getElementById("spread"),
+    comps.map((c) => ({
+      x: c.reliabilityIndex, y: c.risk,
+      color: c.tier === "Space-Safe" ? window.SAGE.COLORS.safe
+           : c.tier === "High-Risk" ? window.SAGE.COLORS.reject
+           : window.SAGE.COLORS.monitor,
+    })),
+    { height: 230, axisLabels: { x: "Reliability Index", y: "Risk" } });
+</script>
+</body>
+</html>

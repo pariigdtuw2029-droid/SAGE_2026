@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Component Database — SAGE</title>
+<link rel="icon" href="../assets/brand/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <div class="console-actions" style="margin-bottom:18px;">
+      <input class="input" id="q" placeholder="Search component ID…" style="min-width:220px;" />
+      <select class="select" id="fLot"><option value="">All Lots</option></select>
+      <select class="select" id="fDec">
+        <option value="">All Status</option>
+        <option>PASS</option><option>MONITOR</option><option>HOLD</option><option>REJECT</option>
+      </select>
+      <select class="select" id="fType"><option value="">All Types</option></select>
+      <button class="btn ghost" id="clear">Clear</button>
+      <span class="box-sub" id="count" style="margin:0 0 0 auto;"></span>
+    </div>
+
+    <section class="box">
+      <div class="table-wrap">
+        <table class="data" id="compTable">
+          <thead>
+            <tr><th>ID</th><th>Lot</th><th>Type</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Tier</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="../app.js"></script>
+<script>
+  const { data, topbar, renderSidebar, badge } = window.SAGE;
+
+  renderSidebar("components.html");
+  topbar("Component Database", null, null, `<span class="box-sub" style="margin:0;">GET /components — full history per part</span>`);
+
+  const lotsSel = document.getElementById("fLot");
+  for (const l of data.lots) {
+    const o = document.createElement("option");
+    o.value = l.lotId; o.textContent = l.lotId;
+    lotsSel.appendChild(o);
+  }
+  const typeSel = document.getElementById("fType");
+  for (const tp of [...new Set(data.components.map((c) => c.type))]) {
+    const o = document.createElement("option");
+    o.value = tp; o.textContent = tp;
+    typeSel.appendChild(o);
+  }
+
+  const tbody = document.querySelector("#compTable tbody");
+  const countEl = document.getElementById("count");
+
+  function render() {
+    const q = document.getElementById("q").value.trim().toUpperCase();
+    const lot = lotsSel.value, dec = document.getElementById("fDec").value, tp = typeSel.value;
+    const rows = data.components.filter((c) =>
+      (!q || c.id.includes(q)) && (!lot || c.lotId === lot) && (!dec || c.decision === dec) && (!tp || c.type === tp)
+    );
+    countEl.textContent = `${rows.length.toLocaleString()} components`;
+    tbody.innerHTML = rows.slice(0, 150).map((c) => `
+      <tr class="click" data-c="${c.id}" data-lot="${c.lotId}">
+        <td>${c.id}</td><td>${c.lotId}</td><td>${c.type}</td>
+        <td>${c.anomaly}</td><td>${c.drift}</td><td>${c.risk}</td>
+        <td>${badge(c.decision)}</td>
+        <td>${c.tier}</td>
+      </tr>`).join("") || `<tr><td colspan="8" style="color:var(--steel-dim);">No matches</td></tr>`;
+    if (rows.length > 150) {
+      tbody.insertAdjacentHTML("beforeend",
+        `<tr><td colspan="8" style="color:var(--steel-dim);">…and ${(rows.length - 150).toLocaleString()} more — refine the filters</td></tr>`);
+    }
+  }
+
+  document.querySelectorAll("#q, #fLot, #fDec, #fType").forEach((el) => el.addEventListener("input", render));
+  document.getElementById("clear").addEventListener("click", () => {
+    document.getElementById("q").value = "";
+    lotsSel.value = ""; document.getElementById("fDec").value = ""; typeSel.value = "";
+    render();
+  });
+  tbody.addEventListener("click", (e) => {
+    const tr = e.target.closest("tr.click");
+    if (tr) location.href = `component-detail.html?comp=${tr.dataset.c}&lot=${tr.dataset.lot}`;
+  });
+
+  render();
+</script>
+</body>
+</html>

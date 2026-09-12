@@ -1,10 +1,9 @@
 """
 Lot service layer.
 
-Routers call these functions and never touch storage directly. Today
-these read from `mock_data` (demo data, clearly isolated). Member 2
-can replace the bodies below with real SQLAlchemy/PostgreSQL queries
-without requiring any change to `app/api/lots.py`.
+Routers call these functions and never touch storage directly.
+Currently backed by mock data; Member 2's database layer can be
+wired here later.
 """
 
 from typing import List, Optional

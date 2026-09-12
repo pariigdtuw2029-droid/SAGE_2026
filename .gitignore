@@ -14,3 +14,7 @@ backend/venv/
 
 # IDE
 .vscode/
+
+# OS / tooling junk
+.DS_Store
+.freebuff/
