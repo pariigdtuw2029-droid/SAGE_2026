@@ -65,8 +65,10 @@ async def upload_burnin_file(file: UploadFile = File(...)):
         logger.exception("Database initialization failed during upload")
 
     # Ingest into Member 2 database & run ML inference pipeline
+    summary = {}
     try:
         result = ingest_dataframe(df, filename=file.filename)
+        summary = result.summary()
         message = f"Ingested {result.valid_rows} rows ({result.lots_created} lots)"
     except DataValidationError as e:
         # Support legacy test fixture (dummy CSV with columns 'a', 'b') without breaking existing test suite
@@ -92,4 +94,12 @@ async def upload_burnin_file(file: UploadFile = File(...)):
         message=message,
         filename=file.filename,
         status="success",
+        valid_rows=summary.get("valid_rows"),
+        rejected_rows=summary.get("rejected_rows"),
+        lots_created=summary.get("lots_created"),
+        components_created=summary.get("components_created"),
+        predictions_created=summary.get("predictions_created"),
+        risk_assessments_created=summary.get("risk_assessments_created"),
+        model_version=summary.get("model_version"),
+        warnings=summary.get("warnings", []),
     )

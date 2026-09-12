@@ -20,30 +20,46 @@ except Exception:
 
 
 def list_lots() -> List[dict]:
-    lots = crud.list_lots()
-    if lots:
-        return lots
+    try:
+        with crud.session_scope() as s:
+            lots = crud.list_lots(db=s)
+            if lots:
+                return lots
+    except Exception:
+        pass
     return list(mock_data.MOCK_LOTS.values())
 
 
 def get_lot(lot_id: str) -> Optional[dict]:
-    lot = crud.get_lot(lot_id)
-    if lot:
-        return lot
+    try:
+        with crud.session_scope() as s:
+            lot = crud.get_lot(lot_id, db=s)
+            if lot:
+                return lot
+    except Exception:
+        pass
     return mock_data.MOCK_LOTS.get(lot_id)
 
 
 def get_lot_summary(lot_id: str) -> Optional[dict]:
-    summary = crud.get_lot_summary(lot_id)
-    if summary:
-        return summary
+    try:
+        with crud.session_scope() as s:
+            summary = crud.get_lot_summary(lot_id, db=s)
+            if summary:
+                return summary
+    except Exception:
+        pass
     return mock_data.MOCK_LOT_SUMMARIES.get(lot_id)
 
 
 def get_lot_components(lot_id: str) -> List[dict]:
-    db_lot = crud.get_lot(lot_id)
-    if db_lot is not None:
-        return crud.get_lot_components(lot_id)
+    try:
+        with crud.session_scope() as s:
+            db_lot = crud.get_lot(lot_id, db=s)
+            if db_lot is not None:
+                return crud.get_lot_components(lot_id, db=s)
+    except Exception:
+        pass
     if lot_id in mock_data.MOCK_LOTS:
         return [
             c for c in mock_data.MOCK_COMPONENTS.values()

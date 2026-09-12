@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Anomaly Detection — SAGE</title>
+<title>Anomaly Detection — ASTRA-GUARD</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -16,105 +16,446 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
-    <div class="kpi-row" id="kpis"></div>
+    <!-- Error / Loading state container -->
+    <div id="stateView" style="display:none;"></div>
 
-    <section class="box">
-      <h2 class="box-title">Anomaly Scatter Plot</h2>
-      <p class="box-sub">Y: anomaly score · X: drift score · color: decision</p>
-      <canvas class="chart" id="scatter"></canvas>
-      <div class="legend">
-        <span class="item"><span class="dot safe"></span> Pass</span>
-        <span class="item"><span class="dot monitor"></span> Monitor</span>
-        <span class="item"><span class="dot hold"></span> Hold</span>
-        <span class="item"><span class="dot reject"></span> Reject</span>
-      </div>
-    </section>
+    <!-- Main analysis view -->
+    <div id="analysisView">
+      <div class="kpi-row" id="kpis"></div>
 
-    <section class="box">
-      <h2 class="box-title">Top Anomalies Table</h2>
-      <div class="table-wrap">
-        <table class="data" id="topTable">
-          <thead><tr><th>ID</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Lot</th></tr></thead>
-          <tbody></tbody>
-        </table>
+      <div class="grid-2">
+        <section class="box">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <h2 class="box-title">Anomaly vs Drift Dispersion</h2>
+              <p class="box-sub">Y: Module A Anomaly Score · X: Module B Drift Score · Color: Decision</p>
+            </div>
+            <span class="badge neutral" id="scatterCountBadge">0 pts</span>
+          </div>
+          <canvas class="chart" id="scatter"></canvas>
+          <div class="legend" style="margin-top:10px;">
+            <span class="item"><span class="dot safe"></span> Pass</span>
+            <span class="item"><span class="dot monitor"></span> Monitor</span>
+            <span class="item"><span class="dot hold"></span> Hold</span>
+            <span class="item"><span class="dot reject"></span> Reject</span>
+            <span class="item" style="color:var(--reject);"><span style="display:inline-block;width:12px;border-top:1px dashed var(--reject);vertical-align:middle;margin-right:4px;"></span> Threshold</span>
+          </div>
+        </section>
+
+        <section class="box">
+          <h2 class="box-title">Lot Screening Decision Distribution</h2>
+          <p class="box-sub">Authentic qualification status for selected lot</p>
+          <canvas class="chart" id="distDonut"></canvas>
+          <div class="legend" id="distLegend" style="margin-top:10px;"></div>
+        </section>
       </div>
-    </section>
+
+      <section class="box">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+          <div>
+            <h2 class="box-title" style="margin:0;">Ranked Anomaly Registry</h2>
+            <p class="box-sub" style="margin:0;">Live component screening records sorted by anomaly score descending · click row for full engineering telemetry</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="box-sub" id="tableCount" style="margin:0;">0 components</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="topTable">
+            <thead>
+              <tr>
+                <th>Component ID</th>
+                <th>Anomaly Score</th>
+                <th>Drift Score</th>
+                <th>Risk Score</th>
+                <th>Risk Level</th>
+                <th>Decision</th>
+                <th>Reliability Tier</th>
+                <th>Lot Identifier</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
 </div>
 
 <script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
-  const { data, charts, topbar, renderSidebar, badge } = window.SAGE;
+  const { charts, topbar, renderSidebar, param, dotFor, badge } = window.SAGE;
 
-  let threshold = 50;
   renderSidebar("anomaly.html");
 
-  function topbar_() {
-    topbar("Anomaly Detection", null, null, `
-      <label class="ctl" style="flex-direction:row;align-items:center;gap:8px;text-transform:none;">
-        Threshold
-        <input type="range" id="thr" min="20" max="90" value="${threshold}" style="width:120px;" />
-        <span class="kpi-value" style="font-size:14px;" id="thrVal">${threshold}</span>
-      </label>
-      <button class="btn" id="apply">[Apply]</button>`);
-  }
-  topbar_();
+  let allLots = [];
+  let currentLotId = "";
+  let lotComponents = [];
+  let threshold = 20;
 
-  function classify() {
-    // Re-bucket purely by anomaly score crossing the threshold, for live feedback.
-    return data.components.map((c) => {
-      const over = c.anomaly >= threshold;
-      const critical = c.anomaly >= threshold + 30;
-      return { c, cls: critical ? "CRITICAL" : over ? "ANOMALOUS" : "NORMAL" };
-    });
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function render() {
-    const buckets = classify();
-    const n = (k) => buckets.filter((b) => b.cls === k).length;
-    document.getElementById("kpis").innerHTML = [
-      ["Normal", n("NORMAL").toLocaleString()],
-      ["Anomalous", n("ANOMALOUS").toLocaleString()],
-      ["Critical", n("CRITICAL").toLocaleString()],
-      ["Total", data.components.length.toLocaleString()],
-    ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
-
-    charts.scatterChart(document.getElementById("scatter"),
-      buckets.map(({ c, cls }) => ({
-        x: c.drift, y: c.anomaly,
-        color: cls === "CRITICAL" ? window.SAGE.COLORS.reject
-             : cls === "ANOMALOUS" ? window.SAGE.COLORS.monitor
-             : window.SAGE.COLORS.safe,
-        r: cls === "CRITICAL" ? 3.4 : 2.6,
-      })),
-      { height: 280, threshold, axisLabels: { x: "Drift Score", y: "Anomaly" } });
-
-    const top = [...buckets].filter((b) => b.cls !== "NORMAL")
-      .sort((a, b) => b.c.risk - a.c.risk).slice(0, 12);
-    document.querySelector("#topTable tbody").innerHTML = top.map(({ c, cls }) => `
-      <tr class="click" data-c="${c.id}">
-        <td>${c.id}</td><td>${c.anomaly}</td><td>${c.drift}</td><td>${c.risk}</td>
-        <td>${badge(c.decision)}</td><td>${c.lotId}</td>
-      </tr>`).join("");
+  function fmt(val, digits = 1) {
+    if (val == null || isNaN(val)) return "—";
+    return Number(val).toFixed(digits);
   }
 
-  document.addEventListener("input", (e) => {
-    if (e.target.id === "thr") {
-      threshold = +e.target.value;
-      document.getElementById("thrVal").textContent = threshold;
-      render();
+  function renderState(title, message, isError = true, actionHtml = "") {
+    document.getElementById("analysisView").style.display = "none";
+    const s = document.getElementById("stateView");
+    s.style.display = "block";
+    s.innerHTML = `
+      <section class="box" style="text-align:center;padding:50px 24px;margin-top:20px;">
+        <div style="font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:0.08em;color:${isError ? 'var(--reject)' : 'var(--sky)'};margin-bottom:12px;text-transform:uppercase;">
+          ${title}
+        </div>
+        <p style="color:var(--steel);max-width:560px;margin:0 auto 24px;font-family:var(--mono);font-size:12.5px;line-height:1.6;">
+          ${message}
+        </p>
+        <div class="console-actions" style="justify-content:center;gap:12px;">
+          ${actionHtml || '<a class="btn" href="burn-in.html">Upload New Data</a>'}
+        </div>
+      </section>
+    `;
+  }
+
+  function updateTopbar() {
+    const lotOptions = allLots.map((l) => {
+      const lid = l.lot_id || l;
+      return `<option value="${escapeHtml(lid)}" ${lid === currentLotId ? 'selected' : ''}>${escapeHtml(lid)}</option>`;
+    }).join("");
+
+    const actionsHtml = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="badge safe" style="font-size:10px;">LIVE • FastAPI</span>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Lot:</span>
+          <select class="select" id="lotSel" style="min-width:180px;font-size:12px;padding:4px 8px;">
+            ${lotOptions || '<option value="">Loading lots...</option>'}
+          </select>
+        </label>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Threshold:</span>
+          <input type="range" id="thr" min="10" max="80" value="${threshold}" style="width:90px;" />
+          <span class="kpi-value" style="font-size:13px;min-width:24px;" id="thrVal">${threshold}</span>
+        </label>
+        <select class="select" id="decFilter" style="font-size:12px;padding:4px 8px;">
+          <option value="">All Decisions</option>
+          <option value="PASS">PASS</option>
+          <option value="MONITOR">MONITOR</option>
+          <option value="HOLD">HOLD</option>
+          <option value="REJECT">REJECT</option>
+        </select>
+        <select class="select" id="riskFilter" style="font-size:12px;padding:4px 8px;">
+          <option value="">All Risk Levels</option>
+          <option value="LOW">LOW</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="HIGH">HIGH</option>
+        </select>
+        <input type="text" id="qInput" class="input" placeholder="Search ID..." style="width:100px;font-size:12px;padding:4px 8px;" />
+      </div>
+    `;
+
+    topbar("Anomaly Detection", null, null, actionsHtml);
+
+    // Bind event listeners
+    const lotSel = document.getElementById("lotSel");
+    if (lotSel) {
+      lotSel.addEventListener("change", (e) => {
+        currentLotId = e.target.value;
+        loadLotComponents(currentLotId);
+      });
     }
-  });
-  document.addEventListener("click", (e) => {
-    if (e.target.id === "apply") window.SAGE.toast(`Threshold ${threshold} applied → risk_assessments re-scored`);
-  });
+
+    const thr = document.getElementById("thr");
+    if (thr) {
+      thr.addEventListener("input", (e) => {
+        threshold = +e.target.value;
+        const valEl = document.getElementById("thrVal");
+        if (valEl) valEl.textContent = threshold;
+        renderFiltered();
+      });
+    }
+
+    const decFilter = document.getElementById("decFilter");
+    if (decFilter) decFilter.addEventListener("change", renderFiltered);
+
+    const riskFilter = document.getElementById("riskFilter");
+    if (riskFilter) riskFilter.addEventListener("change", renderFiltered);
+
+    const qInput = document.getElementById("qInput");
+    if (qInput) qInput.addEventListener("input", renderFiltered);
+  }
+
+  async function init() {
+    renderState("Connecting", "Loading live lots from FastAPI backend...", false, `
+      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
+    `);
+
+    let lotsRes;
+    try {
+      lotsRes = await window.ASTRAGuardAPI.getLots();
+    } catch (err) {
+      renderState("Backend Connection Failed", "Unable to communicate with the ASTRA-GUARD backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+        <button class="btn" onclick="location.reload()">Retry Connection</button>
+      `);
+      return;
+    }
+
+    if (!lotsRes.ok || !Array.isArray(lotsRes.data) || lotsRes.data.length === 0) {
+      renderState("No Lots Found", "No burn-in lots are currently registered in the database. Upload a burn-in dataset to begin.", true, `
+        <a class="btn" href="burn-in.html">Upload Burn-In Data</a>
+      `);
+      return;
+    }
+
+    allLots = lotsRes.data;
+
+    // Determine initial lot
+    const urlLot = param("lot");
+    const foundLot = allLots.find((l) => (l.lot_id || l) === urlLot);
+    if (foundLot) {
+      currentLotId = urlLot;
+    } else {
+      // Default to ISRO-SCL-250113-02 if present, else first lot
+      const flagLot = allLots.find((l) => (l.lot_id || l) === "ISRO-SCL-250113-02");
+      currentLotId = flagLot ? "ISRO-SCL-250113-02" : (allLots[0].lot_id || allLots[0]);
+    }
+
+    updateTopbar();
+    loadLotComponents(currentLotId);
+  }
+
+  async function loadLotComponents(lotId) {
+    if (!lotId) {
+      renderState("Select a Lot", "Please select a lot to inspect authentic anomaly screening data.", false);
+      return;
+    }
+
+    renderState("Loading Telemetry", `Fetching live component records for lot ${escapeHtml(lotId)}...`, false, `
+      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
+    `);
+
+    let res;
+    try {
+      res = await window.ASTRAGuardAPI.getLotComponents(lotId);
+    } catch (err) {
+      renderState("Network Error", `Failed to load components for lot ${escapeHtml(lotId)}: connection error.`, true, `
+        <button class="btn" onclick="loadLotComponents('${escapeHtml(lotId)}')">Retry</button>
+      `);
+      return;
+    }
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        renderState("Lot Not Found", `Lot "${escapeHtml(lotId)}" was not found in the screening database.`, true);
+      } else {
+        renderState("Request Failed", `Server returned error ${res.status}: ${escapeHtml(res.error || "Unknown error")}.`, true);
+      }
+      return;
+    }
+
+    lotComponents = res.data || [];
+
+    if (lotComponents.length === 0) {
+      renderState("Empty Lot", `No component records exist for lot "${escapeHtml(lotId)}".`, false, `
+        <a class="btn" href="burn-in.html">Upload New Data</a>
+      `);
+      return;
+    }
+
+    document.getElementById("stateView").style.display = "none";
+    document.getElementById("analysisView").style.display = "block";
+
+    renderFiltered();
+  }
+
+  function getFilterValues() {
+    const dec = (document.getElementById("decFilter")?.value || "").toUpperCase();
+    const risk = (document.getElementById("riskFilter")?.value || "").toUpperCase();
+    const q = (document.getElementById("qInput")?.value || "").trim().toUpperCase();
+    return { dec, risk, q };
+  }
+
+  function renderFiltered() {
+    const { dec, risk, q } = getFilterValues();
+
+    // Filter components
+    const filtered = lotComponents.filter((c) => {
+      const matchDec = !dec || (c.decision || "").toUpperCase() === dec;
+      const matchRisk = !risk || (c.risk_level || "").toUpperCase() === risk;
+      const matchQ = !q || (c.component_id || "").toUpperCase().includes(q);
+      return matchDec && matchRisk && matchQ;
+    });
+
+    // 1. Calculate honest display aggregations from the loaded lot
+    const totalCount = lotComponents.length;
+    const validAnomalies = lotComponents
+      .map((c) => c.anomaly_score)
+      .filter((v) => v != null && !isNaN(v));
+    const avgAnomaly = validAnomalies.length > 0
+      ? validAnomalies.reduce((a, b) => a + b, 0) / validAnomalies.length
+      : 0;
+
+    let peakComp = null;
+    let peakAnomaly = -1;
+    for (const c of lotComponents) {
+      if (c.anomaly_score != null && c.anomaly_score > peakAnomaly) {
+        peakAnomaly = c.anomaly_score;
+        peakComp = c;
+      }
+    }
+
+    const overThresholdCount = lotComponents.filter((c) => (c.anomaly_score || 0) >= threshold).length;
+    const highRiskCount = lotComponents.filter((c) => (c.risk_level === "HIGH" || (c.risk_score || 0) >= 60)).length;
+
+    // Render KPIs
+    document.getElementById("kpis").innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Lot Population</div>
+        <div class="kpi-value">${totalCount}</div>
+        <div class="kpi-sub">live components</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Average Anomaly</div>
+        <div class="kpi-value" style="color:var(--sky);">${fmt(avgAnomaly)}</div>
+        <div class="kpi-sub">Module A isolation score</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Peak Anomaly Score</div>
+        <div class="kpi-value" style="color:${peakAnomaly >= 30 ? 'var(--reject)' : 'var(--gold)'};">
+          ${peakAnomaly >= 0 ? fmt(peakAnomaly) : '—'}
+        </div>
+        <div class="kpi-sub">${peakComp ? `Component ${escapeHtml(peakComp.component_id)}` : 'No valid records'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Above Threshold (${threshold})</div>
+        <div class="kpi-value" style="color:${overThresholdCount > 0 ? 'var(--hold)' : 'var(--safe)'};">
+          ${overThresholdCount}
+        </div>
+        <div class="kpi-sub">${totalCount > 0 ? ((overThresholdCount / totalCount) * 100).toFixed(0) : 0}% of lot population</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">High-Risk Components</div>
+        <div class="kpi-value" style="color:${highRiskCount > 0 ? 'var(--reject)' : 'var(--safe)'};">
+          ${highRiskCount}
+        </div>
+        <div class="kpi-sub">Risk Level HIGH or score ≥ 60</div>
+      </div>
+    `;
+
+    // 2. Scatter Plot: Module A Anomaly vs Module B Drift
+    const scatterCanvas = document.getElementById("scatter");
+    const scatterPoints = filtered.map((c) => {
+      const dec = (c.decision || "").toUpperCase();
+      const color = dec === "REJECT" ? window.SAGE.COLORS.reject
+                  : dec === "HOLD" ? window.SAGE.COLORS.hold
+                  : dec === "MONITOR" ? window.SAGE.COLORS.monitor
+                  : window.SAGE.COLORS.safe;
+      const isOver = (c.anomaly_score || 0) >= threshold;
+      return {
+        x: c.drift_score != null ? Math.min(100, Math.max(0, c.drift_score)) : 0,
+        y: c.anomaly_score != null ? Math.min(100, Math.max(0, c.anomaly_score)) : 0,
+        color,
+        r: isOver ? 4.0 : 2.8,
+      };
+    });
+
+    document.getElementById("scatterCountBadge").textContent = `${scatterPoints.length} plotted`;
+
+    charts.scatterChart(scatterCanvas, scatterPoints, {
+      height: 250,
+      threshold,
+      axisLabels: { x: "Drift Score (0-100)", y: "Anomaly Score (0-100)" },
+    });
+
+    // 3. Decision Distribution Donut Chart
+    const distCanvas = document.getElementById("distDonut");
+    const counts = { PASS: 0, MONITOR: 0, HOLD: 0, REJECT: 0 };
+    for (const c of lotComponents) {
+      const d = (c.decision || "PASS").toUpperCase();
+      if (counts[d] != null) counts[d]++;
+      else counts.PASS++;
+    }
+
+    const slices = [
+      { label: "PASS", value: counts.PASS, color: window.SAGE.COLORS.safe },
+      { label: "MONITOR", value: counts.MONITOR, color: window.SAGE.COLORS.monitor },
+      { label: "HOLD", value: counts.HOLD, color: window.SAGE.COLORS.hold },
+      { label: "REJECT", value: counts.REJECT, color: window.SAGE.COLORS.reject },
+    ].filter((s) => s.value > 0);
+
+    charts.donutChart(distCanvas, slices.length > 0 ? slices : [{ label: "Empty", value: 1, color: window.SAGE.COLORS.steel }], {
+      height: 250,
+      center: String(totalCount),
+      centerSub: "Components",
+    });
+
+    document.getElementById("distLegend").innerHTML = [
+      ["PASS", counts.PASS, "safe"],
+      ["MONITOR", counts.MONITOR, "monitor"],
+      ["HOLD", counts.HOLD, "hold"],
+      ["REJECT", counts.REJECT, "reject"],
+    ].map(([l, v, cl]) => `
+      <span class="item"><span class="dot ${cl}"></span> ${l}: ${v}</span>
+    `).join("");
+
+    // 4. Ranked Anomaly Table (sorted descending by anomaly score)
+    const sorted = [...filtered].sort((a, b) => (b.anomaly_score || 0) - (a.anomaly_score || 0));
+    const tbody = document.querySelector("#topTable tbody");
+    document.getElementById("tableCount").textContent = `${sorted.length} matching component${sorted.length === 1 ? '' : 's'}`;
+
+    if (sorted.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--steel-dim);padding:24px;text-align:center;">No matching live components for the selected filter criteria.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = sorted.map((c) => {
+      const cid = escapeHtml(c.component_id);
+      const lot = escapeHtml(c.lot_id || currentLotId);
+      const anom = fmt(c.anomaly_score);
+      const drift = fmt(c.drift_score);
+      const risk = fmt(c.risk_score);
+      const rLvl = escapeHtml(c.risk_level || "—");
+      const dec = escapeHtml(c.decision || "—");
+      const tier = escapeHtml(c.reliability_tier || "—");
+      const tierClass = tier === "Space-Safe" ? "safe" : tier === "High-Risk" ? "reject" : "monitor";
+
+      return `
+        <tr class="click" data-c="${cid}" data-lot="${lot}">
+          <td><b style="color:var(--signal);">${cid}</b></td>
+          <td style="font-weight:600;color:${(c.anomaly_score || 0) >= threshold ? 'var(--reject)' : 'var(--frost)'};">${anom}</td>
+          <td>${drift}</td>
+          <td>${risk}</td>
+          <td><span class="badge neutral">${rLvl}</span></td>
+          <td>${badge(dec)}</td>
+          <td><span class="badge ${tierClass}">${tier}</span></td>
+          <td style="color:var(--steel);">${lot}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // Row click delegation
   document.querySelector("#topTable tbody").addEventListener("click", (e) => {
     const tr = e.target.closest("tr.click");
-    if (tr) location.href = `component-detail.html?comp=${tr.dataset.c}`;
+    if (tr && tr.dataset.c) {
+      const comp = encodeURIComponent(tr.dataset.c);
+      const lot = tr.dataset.lot ? `&lot=${encodeURIComponent(tr.dataset.lot)}` : "";
+      location.href = `component-detail.html?comp=${comp}${lot}`;
+    }
   });
 
-  render();
+  init();
 </script>
 </body>
 </html>

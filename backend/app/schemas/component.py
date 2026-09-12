@@ -23,6 +23,10 @@ class ComponentResponse(BaseModel):
         default=None,
         description="Assigned reliability tier (Space-Safe, Borderline, or High-Risk)",
     )
+    drift_score: Optional[float] = None
+    reliability_index: Optional[float] = None
+    model_version: Optional[str] = None
+    split: Optional[str] = None
 
 
 class TrajectoryPoint(BaseModel):
@@ -35,6 +39,12 @@ class TrajectoryResponse(BaseModel):
     actual: List[TrajectoryPoint]
     predicted: List[TrajectoryPoint]
     safety_limit: Optional[float] = None
+
+
+class ExplanationItem(BaseModel):
+    feature: str
+    contribution: Optional[float] = None
+    reason: str
 
 
 class ComponentReportResponse(BaseModel):
@@ -58,4 +68,18 @@ class ComponentReportResponse(BaseModel):
     reliability_tier: Optional[str] = Field(
         default=None,
         description="Assigned reliability tier (Space-Safe, Borderline, or High-Risk)",
+    )
+    drift_score: Optional[float] = None
+    predicted_drift_score: Optional[float] = None
+    reliability_index: Optional[float] = None
+    lot_relative_score: Optional[float] = None
+    multivariate_score: Optional[float] = None
+    worst_lot_zscore: Optional[float] = None
+    absolute_spec_fail: Optional[int] = None
+    interval_low: Optional[float] = None
+    interval_high: Optional[float] = None
+    uncertainty_score: Optional[float] = None
+    explanations: Optional[List[ExplanationItem]] = Field(
+        default_factory=list,
+        description="Structured feature-level explanations and attributions",
     )

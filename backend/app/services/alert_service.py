@@ -18,7 +18,11 @@ except Exception:
 
 
 def list_alerts() -> List[dict]:
-    alerts = crud.get_alerts()
-    if alerts:
-        return alerts
+    try:
+        with crud.session_scope() as s:
+            counts = crud.count_rows(db=s)
+            if counts.get("components", 0) > 0:
+                return crud.get_alerts(db=s)
+    except Exception:
+        pass
     return mock_data.list_alerts()

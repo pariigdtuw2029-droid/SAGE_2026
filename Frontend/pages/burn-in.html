@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Burn-In Testing — SAGE</title>
+<title>Burn-In Telemetry &amp; Screening — ASTRA-GUARD</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -16,176 +16,768 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
-    <div class="kpi-row" id="kpis"></div>
+    <!-- Error / Loading / 404 state container -->
+    <div id="stateView" style="display:none;"></div>
 
-    <section class="box">
-      <h2 class="box-title">Lot Overview Table</h2>
-      <p class="box-sub">Click a lot row to open its component grid</p>
-      <div class="table-wrap">
-        <table class="data" id="lotTable">
-          <thead>
-            <tr><th>Lot ID</th><th>Type</th><th>Components</th><th>Pass</th><th>Monitor</th><th>Hold</th><th>Reject</th><th>Temp</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+    <!-- Main analysis view -->
+    <div id="analysisView">
+      <!-- Component Screening Metadata Ribbon -->
+      <section class="box" id="burnInMetaBar" style="padding:12px 18px;margin-bottom:16px;"></section>
 
-    <div class="grid-2">
+      <!-- Burn-In KPI Row -->
+      <div class="kpi-row" id="kpis"></div>
+
+      <!-- Primary Burn-In Trajectory & Specification Envelope Chart -->
       <section class="box">
-        <h2 class="box-title">Risk Distribution</h2>
-        <canvas class="chart" id="riskPie"></canvas>
-        <div class="legend" id="riskLegend"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h2 class="box-title">Burn-In Screening Trajectory &amp; Specification Envelope</h2>
+            <p class="box-sub">Actual measured checkpoints (0h, 24h, 96h, 168h) vs ML degradation forecast and datasheet safety limit</p>
+          </div>
+          <span class="badge safe" style="font-size:10px;">CHAMBER SCREENING ACTIVE</span>
+        </div>
+        <canvas class="chart" id="trajChart"></canvas>
+        <div class="legend" id="trajLegend" style="margin-top:12px;"></div>
       </section>
+
+      <!-- Burn-In Checkpoint Telemetry Table -->
       <section class="box">
-        <h2 class="box-title">Anomaly Scatter Plot</h2>
-        <canvas class="chart" id="scatter"></canvas>
-        <div class="legend">
-          <span class="item"><span class="dot safe"></span> Space-Safe</span>
-          <span class="item"><span class="dot monitor"></span> Borderline</span>
-          <span class="item"><span class="dot reject"></span> High-Risk</span>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <div>
+            <h2 class="box-title">Burn-In Checkpoint Telemetry Log</h2>
+            <p class="box-sub">Chronological record of chamber measurements, ML forecast checkpoints, and safety margins</p>
+          </div>
+          <span class="badge neutral" id="checkpointBadge" style="font-size:10px;">4 CHECKPOINTS</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="telemetryTable">
+            <thead>
+              <tr>
+                <th>Checkpoint</th>
+                <th>Telemetry Type</th>
+                <th>Measured Value</th>
+                <th>Predicted Value</th>
+                <th>Safety Limit</th>
+                <th>Headroom / Margin</th>
+                <th>Screening Status</th>
+              </tr>
+            </thead>
+            <tbody id="telemetryTableBody"></tbody>
+          </table>
         </div>
       </section>
-    </div>
 
-    <section class="box">
-      <h2 class="box-title">High-Risk Alerts (Top 10)</h2>
-      <ul class="exp-list" id="alerts"></ul>
-    </section>
+      <div class="grid-2">
+        <!-- Degradation Evidence & Multi-Parameter Risk Signals -->
+        <section class="box">
+          <h2 class="box-title">Conformal Interval &amp; Degradation Evidence</h2>
+          <p class="box-sub">Authoritative ML regression bounds and multi-parameter screening signals</p>
+          <div id="conformalDetails" style="margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--steel);line-height:1.8;"></div>
+        </section>
+
+        <!-- Explainability & Diagnostic Reasons -->
+        <section class="box">
+          <h2 class="box-title">Prediction Evidence &amp; Feature Contributions</h2>
+          <p class="box-sub">Feature-level attributions and diagnostic reasons for screening decision</p>
+          <div id="expCards" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-top:12px;margin-bottom:14px;"></div>
+          <ul class="exp-list" id="expList"></ul>
+        </section>
+      </div>
+
+      <!-- High-Risk Screening Alerts (Live) -->
+      <section class="box">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <div>
+            <h2 class="box-title">High-Risk Screening Alerts (Top 10)</h2>
+            <p class="box-sub">Active components flagged for thermal screening and risk review</p>
+          </div>
+          <span class="badge neutral" style="font-size:10px;">Source: GET /api/alerts</span>
+        </div>
+        <ul class="exp-list" id="alertsList"></ul>
+      </section>
+
+      <!-- Architectural Truthfulness Notices -->
+      <div class="grid-2">
+        <section class="box" style="background:rgba(147,166,184,0.03);border:1px dashed var(--line);margin:0;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:18px;line-height:1;margin-top:2px;">ℹ</div>
+            <div>
+              <div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--steel);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:4px;">
+                Environmental Chamber Telemetry Notice
+              </div>
+              <p style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);line-height:1.5;margin:0;">
+                Environmental chamber telemetry (ambient chamber temperature, humidity, thermal cycling logs) is not available in the current API contract. Burn-in screening evaluates real-time electrical parameter degradation checkpoints (0h, 24h, 96h, 168h) and aerospace drift models against component datasheet safety limits.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="box" style="background:rgba(147,166,184,0.03);border:1px dashed var(--line);margin:0;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:18px;line-height:1;margin-top:2px;">ℹ</div>
+            <div>
+              <div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--steel);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:4px;">
+                Cross-Lot Burn-In Analytics Notice
+              </div>
+              <p style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);line-height:1.5;margin:0;">
+                Cross-lot burn-in telemetry comparison is not available in the current API contract. Burn-in trajectories are evaluated at the component level using authoritative screening telemetry from GET /api/components/{id}/trajectory.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   </main>
 </div>
 
+<!-- Hidden File Input for Burn-In CSV Upload -->
 <input type="file" id="burnInCsvInput" accept=".csv" style="display:none;" />
 
 <script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
-  const { data, charts, topbar, renderSidebar, badge } = window.SAGE;
+  const { charts, topbar, renderSidebar, param, dotFor, badge } = window.SAGE;
 
   renderSidebar("burn-in.html");
-  topbar("Burn-In Testing", null, null, `<button class="btn" id="uploadBtn">[Upload CSV]</button>`);
 
+  let allLots = [];
+  let currentLotId = "";
+  let lotComponents = [];
+  let currentCompId = "";
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function fmt(val, digits = 1) {
+    if (val == null || isNaN(val)) return "—";
+    return Number(val).toFixed(digits);
+  }
+
+  function fmtPct(val) {
+    if (val == null || isNaN(val)) return "—";
+    const num = Number(val);
+    return num <= 1.0 ? `${(num * 100).toFixed(1)}%` : `${num.toFixed(1)}%`;
+  }
+
+  function renderState(title, message, isError = true, actionHtml = "") {
+    document.getElementById("analysisView").style.display = "none";
+    const s = document.getElementById("stateView");
+    s.style.display = "block";
+    s.innerHTML = `
+      <section class="box" style="text-align:center;padding:50px 24px;margin-top:20px;">
+        <div style="font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:0.08em;color:${isError ? 'var(--reject)' : 'var(--sky)'};margin-bottom:12px;text-transform:uppercase;">
+          ${title}
+        </div>
+        <p style="color:var(--steel);max-width:560px;margin:0 auto 24px;font-family:var(--mono);font-size:12.5px;line-height:1.6;">
+          ${message}
+        </p>
+        <div class="console-actions" style="justify-content:center;gap:12px;">
+          ${actionHtml || '<a class="btn" href="components.html">Back to Components</a>'}
+        </div>
+      </section>
+    `;
+  }
+
+  // Setup CSV Upload Handler
   const fileInput = document.getElementById("burnInCsvInput");
-  document.getElementById("uploadBtn").addEventListener("click", () => fileInput.click());
-
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files[0];
     if (!file) return;
     window.SAGE.toast(`Uploading ${file.name} to POST /api/burnin/upload...`);
-    const res = await window.ASTRAGuardAPI.uploadBurnIn(file);
-    if (res.ok && res.data) {
-      window.SAGE.toast(`Uploaded ${res.data.filename || file.name}: ${res.data.records_processed != null ? res.data.records_processed + ' records processed' : (res.data.message || 'Success')}`);
-      loadLiveData();
-    } else {
-      window.SAGE.toast(`Upload error: ${res.error || "Failed to process CSV"}`);
+    try {
+      const res = await window.ASTRAGuardAPI.uploadBurnIn(file);
+      if (res.ok && res.data) {
+        const countMsg = res.data.records_processed != null
+          ? `${res.data.records_processed} records processed`
+          : (res.data.message || "Upload successful");
+        window.SAGE.toast(`Uploaded ${res.data.filename || file.name}: ${countMsg}`);
+        await init();
+      } else {
+        window.SAGE.toast(`Upload error: ${res.error || "Failed to process CSV"}`);
+      }
+    } catch (err) {
+      window.SAGE.toast(`Upload failed: ${err.message || "Network error"}`);
+    } finally {
+      fileInput.value = "";
     }
-    fileInput.value = "";
   });
 
-  async function loadLiveData() {
-    let lotsList = [];
-    let isLive = false;
+  function updateTopbar() {
+    const lotOptions = allLots.map((l) => {
+      const lid = l.lot_id || l;
+      return `<option value="${escapeHtml(lid)}" ${lid === currentLotId ? 'selected' : ''}>${escapeHtml(lid)}</option>`;
+    }).join("");
 
-    // 1. Fetch lots from backend
-    const lotsRes = await window.ASTRAGuardAPI.getLots();
-    if (lotsRes.ok && Array.isArray(lotsRes.data) && lotsRes.data.length > 0) {
-      isLive = true;
-      // Fetch summaries in parallel
-      const summaryPromises = lotsRes.data.map(async (l) => {
-        const sum = await window.ASTRAGuardAPI.getLotSummary(l.lot_id);
-        return {
-          lotId: l.lot_id,
-          type: "Thermal-Screened",
-          size: l.total_components || (sum.ok ? sum.data.total_components : 0),
-          pass: sum.ok ? sum.data.passed : 0,
-          monitor: sum.ok ? sum.data.monitor : 0,
-          hold: sum.ok ? sum.data.hold : 0,
-          reject: sum.ok ? sum.data.reject : 0,
-          temp: 125,
-          status: l.status,
-          avgAnomaly: sum.ok ? sum.data.average_anomaly_score : 0,
-          highRisk: sum.ok ? sum.data.high_risk_components : 0,
-        };
-      });
-      lotsList = await Promise.all(summaryPromises);
-    } else {
-      lotsList = data.lots;
+    const compOptions = lotComponents.map((c) => {
+      const cid = c.component_id;
+      return `<option value="${escapeHtml(cid)}" ${cid === currentCompId ? 'selected' : ''}>${escapeHtml(cid)} (${escapeHtml(c.decision || '—')})</option>`;
+    }).join("");
+
+    const actionsHtml = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn" id="uploadBtn" style="font-size:12px;padding:4px 10px;">[Upload CSV]</button>
+        <span class="badge safe" style="font-size:10px;">LIVE • FastAPI</span>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Lot:</span>
+          <select class="select" id="lotSel" style="min-width:170px;font-size:12px;padding:4px 8px;">
+            ${lotOptions || '<option value="">Loading lots...</option>'}
+          </select>
+        </label>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Component:</span>
+          <select class="select" id="compSel" style="min-width:140px;font-size:12px;padding:4px 8px;">
+            ${compOptions || '<option value="">Select component</option>'}
+          </select>
+        </label>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input type="text" id="directCompInput" class="input" placeholder="Component ID..." style="width:110px;font-size:12px;padding:4px 8px;" />
+          <button class="btn" id="directCompBtn" style="font-size:12px;padding:4px 10px;">Lookup</button>
+        </div>
+      </div>
+    `;
+
+    topbar("Burn-In Telemetry &amp; Screening", null, null, actionsHtml);
+
+    const uploadBtn = document.getElementById("uploadBtn");
+    if (uploadBtn) {
+      uploadBtn.addEventListener("click", () => fileInput.click());
     }
 
-    // 2. Compute KPI totals
-    let totalComps = 0, totalRej = 0, totalPass = 0, totalMon = 0, totalHold = 0;
-    lotsList.forEach((l) => {
-      totalComps += l.size;
-      totalPass += l.pass;
-      totalMon += l.monitor;
-      totalHold += l.hold;
-      totalRej += l.reject;
-    });
+    const lotSel = document.getElementById("lotSel");
+    if (lotSel) {
+      lotSel.addEventListener("change", async (e) => {
+        currentLotId = e.target.value;
+        await onLotSelected(currentLotId);
+      });
+    }
 
-    document.getElementById("kpis").innerHTML = [
-      ["Total Lots", lotsList.length],
-      ["Components", totalComps.toLocaleString()],
-      ["Rejected", totalRej],
-      ["Backend Status", isLive ? "LIVE (FastAPI)" : "DEMO (Mock)"],
-    ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+    const compSel = document.getElementById("compSel");
+    if (compSel) {
+      compSel.addEventListener("change", (e) => {
+        const sel = e.target.value;
+        if (sel && sel !== currentCompId) {
+          currentCompId = sel;
+          loadBurnInData(currentCompId);
+        }
+      });
+    }
 
-    // 3. Render Lots Table
-    document.querySelector("#lotTable tbody").innerHTML = lotsList.map((l) => `
-      <tr class="click" data-lot="${l.lotId}">
-        <td><b>${l.lotId}</b></td><td>${l.type}</td><td>${l.size}</td>
-        <td>${l.pass}</td><td>${l.monitor}</td><td>${l.hold}</td><td>${l.reject}</td>
-        <td>${l.temp}°C</td>
-      </tr>`).join("");
-    document.querySelectorAll("#lotTable tr.click").forEach((tr) =>
-      tr.addEventListener("click", () => location.href = `lot-detail.html?lot=${encodeURIComponent(tr.dataset.lot)}`));
-
-    // 4. Render Donut Chart
-    const denom = totalComps || 1;
-    charts.donutChart(document.getElementById("riskPie"), [
-      { value: totalPass,    color: window.SAGE.COLORS.safe },
-      { value: totalMon,     color: window.SAGE.COLORS.monitor },
-      { value: totalHold,    color: window.SAGE.COLORS.hold },
-      { value: totalRej,     color: window.SAGE.COLORS.reject },
-    ], { height: 200, center: totalComps.toLocaleString(), centerSub: "components" });
-
-    document.getElementById("riskLegend").innerHTML = `
-      <span class="item"><span class="dot safe"></span> Space-Safe ${Math.round(totalPass / denom * 100)}%</span>
-      <span class="item"><span class="dot monitor"></span> Borderline ${Math.round((totalMon + totalHold) / denom * 100)}%</span>
-      <span class="item"><span class="dot reject"></span> High-Risk ${Math.round(totalRej / denom * 100)}%</span>`;
-
-    // 5. Render Scatter Chart (using mock distribution)
-    charts.scatterChart(document.getElementById("scatter"),
-      data.components.map((c) => ({
-        x: c.drift, y: c.anomaly,
-        color: c.decision === "PASS" ? window.SAGE.COLORS.safe
-             : c.decision === "REJECT" ? window.SAGE.COLORS.reject
-             : window.SAGE.COLORS.monitor,
-      })),
-      { height: 230, axisLabels: { x: "Drift Score", y: "Anomaly" } });
-
-    // 6. Render High-Risk Alerts
-    const alertsRes = await window.ASTRAGuardAPI.getAlerts();
-    const alertsListEl = document.getElementById("alerts");
-    if (alertsRes.ok && Array.isArray(alertsRes.data) && alertsRes.data.length > 0) {
-      alertsListEl.innerHTML = alertsRes.data.slice(0, 10).map((a) => `
-        <li class="click" style="cursor:pointer" data-c="${a.component_id}" data-lot="${a.lot_id}">
-          <span class="dot ${a.severity === 'CRITICAL' ? 'reject' : 'hold'}"></span>
-          <b>${a.component_id}</b> (${a.lot_id}) — Risk: <b>${a.risk_score}</b> — Severity: <b>${a.severity}</b> — Flagged for thermal screening
-        </li>`).join("");
-      alertsListEl.querySelectorAll("li.click").forEach((li) =>
-        li.addEventListener("click", () => location.href = `component-detail.html?comp=${encodeURIComponent(li.dataset.c)}&lot=${encodeURIComponent(li.dataset.lot)}`));
-    } else {
-      alertsListEl.innerHTML = data.topRisk(10).map((c) => `
-        <li class="click" style="cursor:pointer" data-c="${c.id}">
-          <span class="dot reject"></span>
-          <b>${c.id}</b> — Risk: ${c.risk} — ${c.decision} — ${data.reason(c)}
-        </li>`).join("");
-      alertsListEl.querySelectorAll("li.click").forEach((li) =>
-        li.addEventListener("click", () => location.href = `component-detail.html?comp=${li.dataset.c}`));
+    const directBtn = document.getElementById("directCompBtn");
+    const directInput = document.getElementById("directCompInput");
+    if (directBtn && directInput) {
+      directBtn.addEventListener("click", () => {
+        const val = (directInput.value || "").trim().toUpperCase();
+        if (val) {
+          currentCompId = val;
+          loadBurnInData(currentCompId);
+        }
+      });
+      directInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const val = (directInput.value || "").trim().toUpperCase();
+          if (val) {
+            currentCompId = val;
+            loadBurnInData(currentCompId);
+          }
+        }
+      });
     }
   }
 
-  loadLiveData();
+  async function init() {
+    renderState("Connecting", "Loading burn-in lots and screening records from FastAPI backend...", false, `
+      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
+    `);
+
+    let lotsRes;
+    try {
+      lotsRes = await window.ASTRAGuardAPI.getLots();
+    } catch (err) {
+      renderState("Backend Connection Failed", "Unable to reach ASTRA-GUARD backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+        <button class="btn" onclick="location.reload()">Retry Connection</button>
+      `);
+      return;
+    }
+
+    if (!lotsRes.ok || !Array.isArray(lotsRes.data) || lotsRes.data.length === 0) {
+      renderState("No Lots Found", "No burn-in lots are currently registered in the screening database.", true, `
+        <button class="btn" onclick="document.getElementById('burnInCsvInput').click()">Upload Burn-In Data</button>
+      `);
+      return;
+    }
+
+    allLots = lotsRes.data;
+
+    // Check URL parameters
+    const qComp = (param("comp") || param("id") || "").trim().toUpperCase();
+    const qLot = (param("lot") || "").trim();
+
+    if (qLot && allLots.find((l) => (l.lot_id || l) === qLot)) {
+      currentLotId = qLot;
+    } else {
+      const flagLot = allLots.find((l) => (l.lot_id || l) === "ISRO-SCL-250113-02");
+      currentLotId = flagLot ? "ISRO-SCL-250113-02" : (allLots[0].lot_id || allLots[0]);
+    }
+
+    if (qComp) currentCompId = qComp;
+
+    await onLotSelected(currentLotId, currentCompId);
+  }
+
+  async function onLotSelected(lotId, preferredCompId = "") {
+    let compsRes;
+    try {
+      compsRes = await window.ASTRAGuardAPI.getLotComponents(lotId);
+    } catch (err) {
+      renderState("Network Error", `Failed to load components for lot ${escapeHtml(lotId)}.`, true);
+      return;
+    }
+
+    if (!compsRes.ok) {
+      renderState("Error Loading Lot", `Could not retrieve components for lot ${escapeHtml(lotId)}.`, true);
+      return;
+    }
+
+    lotComponents = compsRes.data || [];
+
+    if (lotComponents.length === 0) {
+      renderState("Empty Lot", `Lot "${escapeHtml(lotId)}" has no component screening records.`, false, `
+        <button class="btn" onclick="document.getElementById('burnInCsvInput').click()">Upload Data</button>
+      `);
+      return;
+    }
+
+    if (preferredCompId && lotComponents.some((c) => c.component_id === preferredCompId)) {
+      currentCompId = preferredCompId;
+    } else if (preferredCompId) {
+      currentCompId = preferredCompId; // Allow direct component lookup even across lots
+    } else {
+      currentCompId = lotComponents[0].component_id;
+    }
+
+    updateTopbar();
+    loadBurnInData(currentCompId);
+  }
+
+  async function loadBurnInData(compId) {
+    if (!compId) {
+      renderState("Select a Component", "Please select a component to inspect authentic burn-in screening telemetry.", false);
+      return;
+    }
+
+    // Clear previous view to prevent stale data leakage
+    document.getElementById("analysisView").style.display = "none";
+    renderState("Loading Telemetry", `Fetching burn-in checkpoints, degradation trajectory, and screening records for ${escapeHtml(compId)}...`, false, `
+      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
+    `);
+
+    let compRes, trajRes, repRes, alertsRes;
+    try {
+      [compRes, trajRes, repRes, alertsRes] = await Promise.all([
+        window.ASTRAGuardAPI.getComponent(compId),
+        window.ASTRAGuardAPI.getComponentTrajectory(compId),
+        window.ASTRAGuardAPI.getComponentReport(compId),
+        window.ASTRAGuardAPI.getAlerts(),
+      ]);
+    } catch (err) {
+      renderState("Connection Failed", `Failed to load burn-in telemetry for ${escapeHtml(compId)}: server unreachable.`, true, `
+        <button class="btn" onclick="loadBurnInData('${escapeHtml(compId)}')">Retry</button>
+      `);
+      return;
+    }
+
+    if (!compRes.ok) {
+      if (compRes.status === 404) {
+        renderState("Component Not Found (404)", `Component "${escapeHtml(compId)}" was not found in the screening database. No synthetic telemetry will be displayed.`, true, `
+          <a class="btn" href="components.html">Back to Components</a>
+        `);
+      } else {
+        renderState("Request Failed", `Server returned error ${compRes.status}: ${escapeHtml(compRes.error || "Unknown error")}.`, true);
+      }
+      return;
+    }
+
+    const comp = compRes.data;
+    const traj = (trajRes && trajRes.ok) ? trajRes.data : {};
+    const rep = (repRes && repRes.ok) ? repRes.data : {};
+    const alerts = (alertsRes && alertsRes.ok && Array.isArray(alertsRes.data)) ? alertsRes.data : [];
+
+    // Harmonize parent lot selection if needed
+    if (comp.lot_id && comp.lot_id !== currentLotId) {
+      currentLotId = comp.lot_id;
+      const lotSel = document.getElementById("lotSel");
+      if (lotSel) lotSel.value = currentLotId;
+    }
+
+    document.getElementById("stateView").style.display = "none";
+    document.getElementById("analysisView").style.display = "block";
+
+    renderBurnInDashboard(comp, traj, rep, alerts);
+  }
+
+  function renderBurnInDashboard(comp, traj, rep, alerts) {
+    const cid = escapeHtml(comp.component_id);
+    const lid = escapeHtml(comp.lot_id || currentLotId);
+    const decision = escapeHtml(comp.decision || rep.decision || "—");
+    const riskLevel = escapeHtml(comp.risk_level || "—");
+    const tier = escapeHtml(comp.reliability_tier || rep.reliability_tier || "—");
+    const tierClass = tier === "Space-Safe" ? "safe" : tier === "High-Risk" ? "reject" : "monitor";
+    const decClass = decision.toLowerCase();
+    const modelVer = escapeHtml(comp.model_version || rep.model_version || "sage-1.1");
+    const split = escapeHtml(comp.split || rep.split || "train");
+
+    const actual = Array.isArray(traj.actual) ? traj.actual : [];
+    const predicted = Array.isArray(traj.predicted) ? traj.predicted : [];
+    const safetyLimit = traj.safety_limit != null ? traj.safety_limit : null;
+
+    const initialVal = actual.length > 0 ? actual[0].value : null;
+    const latestActual = actual.length > 0 ? actual[actual.length - 1] : null;
+    const pred168 = comp.predicted_168h != null ? comp.predicted_168h : rep.predicted_168h;
+    const driftScore = comp.drift_score ?? rep.drift_score;
+    const riskScore = comp.risk_score ?? rep.risk_score;
+    const conf = comp.confidence ?? rep.confidence;
+    const relIndex = comp.reliability_index ?? rep.reliability_index;
+
+    // 1. Metadata Ribbon
+    document.getElementById("burnInMetaBar").innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-family:var(--mono);font-size:15px;font-weight:600;color:var(--signal);">${cid}</span>
+          <a class="backlink" href="lot-detail.html?lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:3px 8px;">Lot: ${lid}</a>
+          <span class="badge ${decClass}">${decision}</span>
+          <span class="badge ${tierClass}">${tier}</span>
+          <span class="badge neutral">Risk: ${riskLevel} (${fmt(riskScore)})</span>
+          <span class="badge neutral">Model: ${modelVer}</span>
+          <span class="badge neutral">Split: ${split}</span>
+          ${comp.slope_reject_flag ? `<span class="badge reject">SLOPE REJECT</span>` : ""}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a class="btn ghost" href="component-detail.html?comp=${encodeURIComponent(cid)}&lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
+            Full Telemetry →
+          </a>
+          <a class="btn ghost" href="predictions.html?comp=${encodeURIComponent(cid)}&lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
+            AI Predictions →
+          </a>
+          <a class="btn ghost" href="reports.html?comp=${encodeURIComponent(cid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
+            Audit Report →
+          </a>
+        </div>
+      </div>
+    `;
+
+    // 2. Burn-In KPI Row (6 Cards)
+    const latestStr = latestActual != null ? `${fmt(latestActual.value, 3)} µA` : "—";
+    const latestSub = latestActual != null ? `at ${latestActual.time}h checkpoint` : "no chamber telemetry";
+
+    let marginStr = "—";
+    if (latestActual != null && safetyLimit != null) {
+      const margin = safetyLimit - latestActual.value;
+      marginStr = `Margin: ${margin >= 0 ? '+' : ''}${fmt(margin, 3)} µA`;
+    }
+
+    document.getElementById("kpis").innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Initial Measurement (0h)</div>
+        <div class="kpi-value" style="color:var(--sky);">${initialVal != null ? `${fmt(initialVal, 3)} µA` : '—'}</div>
+        <div class="kpi-sub">baseline chamber readout</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Latest Measured Value</div>
+        <div class="kpi-value" style="color:var(--signal);">${latestStr}</div>
+        <div class="kpi-sub">${latestSub}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Predicted @168h</div>
+        <div class="kpi-value" style="color:var(--gold);">${pred168 != null ? `${fmt(pred168, 3)} µA` : '—'}</div>
+        <div class="kpi-sub">ML degradation forecast</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Datasheet Safety Limit</div>
+        <div class="kpi-value" style="color:${safetyLimit != null ? 'var(--reject)' : 'var(--steel)'};">${safetyLimit != null ? `${fmt(safetyLimit, 3)} µA` : '—'}</div>
+        <div class="kpi-sub">${marginStr}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Observed Early Drift</div>
+        <div class="kpi-value" style="color:var(--frost);">${driftScore != null ? fmt(driftScore) : '—'}</div>
+        <div class="kpi-sub">Module B drift score</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Decision &amp; Tier</div>
+        <div class="kpi-value" style="font-size:20px;">
+          ${decision} <span style="font-size:14px;color:var(--steel);font-weight:400;">(${fmtPct(conf)})</span>
+        </div>
+        <div class="kpi-sub">tier: ${tier}</div>
+      </div>
+    `;
+
+    // 3. Primary Burn-In Trajectory Chart
+    const chartCanvas = document.getElementById("trajChart");
+    if (actual.length > 0) {
+      chartCanvas.style.display = "block";
+      const actualColor = decision === "REJECT" ? window.SAGE.COLORS.reject
+                        : (decision === "HOLD" || decision === "MONITOR") ? window.SAGE.COLORS.gold
+                        : window.SAGE.COLORS.sky;
+
+      const series = [];
+
+      // Series 1: Actual Measurements
+      const actualPts = actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
+      series.push({
+        points: actualPts,
+        color: actualColor,
+        dashed: false,
+      });
+
+      // Series 2: Predicted Points (connected from latest actual measurement)
+      if (predicted.length > 0) {
+        const lastAct = actual[actual.length - 1];
+        const predPts = [
+          { x: lastAct.time, y: lastAct.value, forecast: false },
+          ...predicted.map((p) => ({ x: p.time, y: p.value, forecast: true })),
+        ];
+        series.push({
+          points: predPts,
+          color: window.SAGE.COLORS.gold,
+          dashed: true,
+        });
+      }
+
+      // Series 3: Safety Limit Horizon
+      if (safetyLimit != null) {
+        const minX = Math.min(...actual.map((p) => p.time));
+        const maxX = 168;
+        series.push({
+          points: [
+            { x: minX, y: safetyLimit, forecast: false },
+            { x: maxX, y: safetyLimit, forecast: false },
+          ],
+          color: window.SAGE.COLORS.reject,
+          dashed: true,
+        });
+      }
+
+      charts.lineChart(chartCanvas, series, {
+        height: 260,
+        xTick: (x) => `${x}h`,
+      });
+
+      const firstAct = actual[0];
+      const lastAct = actual[actual.length - 1];
+      const lastPred = predicted.length ? predicted[predicted.length - 1] : null;
+
+      document.getElementById("trajLegend").innerHTML = `
+        <span class="item"><span class="dot ${dotFor(decision)}"></span> Measured Telemetry (0h: ${fmt(firstAct.value, 3)} → ${lastAct.time}h: ${fmt(lastAct.value, 3)} µA)</span>
+        ${lastPred ? `<span class="item"><span class="dot hold"></span> ML Forecast (168h: ${fmt(lastPred.value, 3)} µA)</span>` : ""}
+        ${safetyLimit != null ? `<span class="item" style="color:var(--reject);">Datasheet Safety Limit: ${fmt(safetyLimit, 3)} µA</span>` : ""}
+        <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(cid)}/trajectory</span>
+      `;
+    } else {
+      chartCanvas.style.display = "none";
+      document.getElementById("trajLegend").innerHTML = `<span style="color:var(--steel-dim);font-family:var(--mono);">No trajectory points stored for ${cid}.</span>`;
+    }
+
+    // 4. Burn-In Checkpoint Telemetry Table
+    const tableBody = document.getElementById("telemetryTableBody");
+    const rows = [];
+
+    // Actual Rows
+    actual.forEach((p, idx) => {
+      const isBaseline = p.time === 0;
+      const isFinal = p.time === 168;
+      const label = isBaseline ? "0h (Baseline)" : isFinal ? "168h (Final Checkpoint)" : `${p.time}h Checkpoint`;
+      let headroomStr = "—";
+      let statusBadge = '<span class="badge safe">NOMINAL</span>';
+
+      if (safetyLimit != null) {
+        const headroom = safetyLimit - p.value;
+        const pct = (headroom / safetyLimit) * 100;
+        headroomStr = `${headroom >= 0 ? '+' : ''}${fmt(headroom, 4)} µA (${fmt(pct, 1)}% headroom)`;
+        if (p.value > safetyLimit) {
+          statusBadge = '<span class="badge reject">SPEC EXCEEDED</span>';
+        } else if (pct < 20) {
+          statusBadge = '<span class="badge hold">MARGIN ADVISORY</span>';
+        }
+      }
+
+      rows.push(`
+        <tr>
+          <td><b>${label}</b></td>
+          <td><span class="badge safe" style="font-size:10px;">MEASURED</span></td>
+          <td style="font-family:var(--mono);font-weight:600;color:var(--signal);">${fmt(p.value, 4)} µA</td>
+          <td style="color:var(--steel-dim);">—</td>
+          <td style="font-family:var(--mono);">${safetyLimit != null ? `${fmt(safetyLimit, 3)} µA` : '—'}</td>
+          <td style="font-family:var(--mono);color:${p.value > (safetyLimit || Infinity) ? 'var(--reject)' : 'var(--steel)'};">${headroomStr}</td>
+          <td>${statusBadge}</td>
+        </tr>
+      `);
+    });
+
+    // Predicted Rows
+    predicted.forEach((p, idx) => {
+      const label = `${p.time}h (ML Forecast)`;
+      let headroomStr = "—";
+      let statusBadge = '<span class="badge safe">WITHIN ENVELOPE</span>';
+
+      if (safetyLimit != null) {
+        const headroom = safetyLimit - p.value;
+        const pct = (headroom / safetyLimit) * 100;
+        headroomStr = `${headroom >= 0 ? '+' : ''}${fmt(headroom, 4)} µA (${fmt(pct, 1)}% headroom)`;
+        if (p.value > safetyLimit) {
+          statusBadge = '<span class="badge reject">LIMIT BREACH</span>';
+        } else if (pct < 20) {
+          statusBadge = '<span class="badge hold">HIGH DRIFT RATE</span>';
+        }
+      }
+
+      rows.push(`
+        <tr style="background:rgba(201,168,106,0.03);">
+          <td><b>${label}</b></td>
+          <td><span class="badge monitor" style="font-size:10px;">ML FORECAST</span></td>
+          <td style="color:var(--steel-dim);">—</td>
+          <td style="font-family:var(--mono);font-weight:600;color:var(--gold);">${fmt(p.value, 4)} µA</td>
+          <td style="font-family:var(--mono);">${safetyLimit != null ? `${fmt(safetyLimit, 3)} µA` : '—'}</td>
+          <td style="font-family:var(--mono);color:var(--gold);">${headroomStr}</td>
+          <td>${statusBadge}</td>
+        </tr>
+      `);
+    });
+
+    tableBody.innerHTML = rows.join("");
+    document.getElementById("checkpointBadge").textContent = `${actual.length} MEASURED · ${predicted.length} PREDICTED`;
+
+    // 5. Conformal Interval & Degradation Evidence
+    const intLow = rep.interval_low;
+    const intHigh = rep.interval_high;
+    const intervalStr = (intLow != null && intHigh != null)
+      ? `${fmt(intLow, 3)} — ${fmt(intHigh, 3)} µA`
+      : "—";
+
+    const specBadge = rep.absolute_spec_fail === 1
+      ? '<span class="badge reject">SPEC VIOLATION</span>'
+      : '<span class="badge safe">NO SPEC VIOLATION (0)</span>';
+
+    const slopeBadge = comp.slope_reject_flag
+      ? '<span class="badge reject">EXCEEDED (Slope Rejection)</span>'
+      : '<span class="badge safe">PASS (Safe Envelope)</span>';
+
+    document.getElementById("conformalDetails").innerHTML = `
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>168h Point Forecast:</span>
+        <span style="color:var(--gold);font-weight:600;">${pred168 != null ? `${fmt(pred168, 4)} µA` : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Conformal Prediction Interval (90%):</span>
+        <span style="color:var(--signal);">${intervalStr}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Forecast Uncertainty Score:</span>
+        <span style="color:var(--signal);">${rep.uncertainty_score != null ? `${fmt(rep.uncertainty_score)} / 100` : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Observed Early Drift Score:</span>
+        <span style="color:var(--frost);">${driftScore != null ? fmt(driftScore) : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Module B Projected 168h Drift Score:</span>
+        <span style="color:var(--frost);">${rep.predicted_drift_score != null ? fmt(rep.predicted_drift_score, 2) : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Lot-Relative Outlier Score:</span>
+        <span style="color:var(--sky);">${rep.lot_relative_score != null ? fmt(rep.lot_relative_score) : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Multivariate Cross-Param Score:</span>
+        <span style="color:var(--violet);">${rep.multivariate_score != null ? fmt(rep.multivariate_score) : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Worst Intra-Lot Z-Score:</span>
+        <span style="color:var(--signal);">${rep.worst_lot_zscore != null ? fmt(rep.worst_lot_zscore, 2) : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line);">
+        <span>Absolute Spec Check:</span>
+        <span>${specBadge}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;">
+        <span>Safety Slope Rule:</span>
+        <span>${slopeBadge}</span>
+      </div>
+    `;
+
+    // 6. Prediction Evidence Cards & Reasons
+    const cardsEl = document.getElementById("expCards");
+    const explanations = (rep.explanations && Array.isArray(rep.explanations)) ? rep.explanations : [];
+
+    if (explanations.length > 0) {
+      cardsEl.innerHTML = explanations.map((exp) => {
+        const feat = escapeHtml(exp.feature || "Signal");
+        const reason = escapeHtml(exp.reason || "Attribution reason");
+        const contrib = exp.contribution != null
+          ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`)
+          : null;
+        return `
+          <div style="background:rgba(13,22,36,0.8);border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span class="badge neutral" style="font-size:10px;text-transform:uppercase;">${feat}</span>
+              ${contrib ? `<span style="font-family:var(--mono);font-weight:600;color:var(--sky);font-size:12px;">${contrib}</span>` : ""}
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--frost);line-height:1.4;">
+              ${reason}
+            </div>
+          </div>
+        `;
+      }).join("");
+    } else {
+      cardsEl.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--steel-dim);grid-column:1/-1;">No structured feature contributions stored for this component.</div>`;
+    }
+
+    const listEl = document.getElementById("expList");
+    const reasons = (rep.reasons && Array.isArray(rep.reasons)) ? rep.reasons : [];
+    if (reasons.length > 0) {
+      listEl.innerHTML = reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+    } else {
+      listEl.innerHTML = `<li class="ok">All measurements nominal within expected burn-in degradation bounds.</li>`;
+    }
+
+    // 7. High-Risk Screening Alerts (Live)
+    const alertsEl = document.getElementById("alertsList");
+    if (alerts && alerts.length > 0) {
+      alertsEl.innerHTML = alerts.slice(0, 10).map((a) => {
+        const aCid = escapeHtml(a.component_id);
+        const aLid = escapeHtml(a.lot_id);
+        const aRisk = fmt(a.risk_score);
+        const aSev = escapeHtml(a.severity || "HIGH");
+        const isSelected = aCid === cid;
+        return `
+          <li class="click" style="cursor:pointer;background:${isSelected ? 'rgba(52,211,153,0.06)' : 'transparent'};" data-c="${aCid}" data-lot="${aLid}">
+            <span class="dot ${aSev === 'CRITICAL' ? 'reject' : 'hold'}"></span>
+            <b>${aCid}</b> (${aLid}) — Risk Score: <b>${aRisk}</b> — Severity: <b>${aSev}</b> — Flagged for burn-in review
+            ${isSelected ? '<span class="badge safe" style="font-size:9px;margin-left:8px;">CURRENT</span>' : ''}
+          </li>
+        `;
+      }).join("");
+
+      alertsEl.querySelectorAll("li.click").forEach((li) => {
+        li.addEventListener("click", () => {
+          const targetCid = li.dataset.c;
+          if (targetCid && targetCid !== currentCompId) {
+            currentCompId = targetCid;
+            loadBurnInData(currentCompId);
+          }
+        });
+      });
+    } else {
+      alertsEl.innerHTML = `<li class="ok">No active critical or high-risk component alerts registered in the screening database.</li>`;
+    }
+  }
+
+  init();
 </script>
 </body>
 </html>

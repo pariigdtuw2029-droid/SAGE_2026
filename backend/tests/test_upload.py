@@ -7,6 +7,39 @@ def test_upload_success(client):
     body = response.json()
     assert body["status"] == "success"
     assert body["filename"] == "data.csv"
+    assert "valid_rows" in body
+    assert "lots_created" in body
+    assert "components_created" in body
+
+
+def test_upload_valid_burnin_dataset_returns_ingestion_counts(client):
+    import io
+    import os
+    import pandas as pd
+
+    data_csv = os.path.join(os.path.dirname(__file__), "..", "data", "burn_in_dataset.csv")
+    if not os.path.exists(data_csv):
+        return
+
+    df = pd.read_csv(data_csv).head(60)
+    buf = io.StringIO()
+    df.to_csv(buf, index=False)
+    csv_bytes = buf.getvalue().encode("utf-8")
+
+    response = client.post(
+        "/api/burnin/upload",
+        files={"file": ("burn_in_sample.csv", csv_bytes, "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["valid_rows"] is not None and body["valid_rows"] > 0
+    assert body["lots_created"] is not None and body["lots_created"] > 0
+    assert body["components_created"] is not None and body["components_created"] > 0
+    assert body["predictions_created"] is not None and body["predictions_created"] > 0
+    assert body["risk_assessments_created"] is not None and body["risk_assessments_created"] > 0
+    assert body["model_version"] is not None
+    assert isinstance(body["warnings"], list)
 
 
 def test_upload_wrong_file_type(client):

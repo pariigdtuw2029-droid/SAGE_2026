@@ -74,6 +74,10 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "confidence": 0.94,
         "slope_reject_flag": False,
         "reliability_tier": "Space-Safe",
+        "drift_score": 10.5,
+        "reliability_index": 92.0,
+        "model_version": "sage-1.1",
+        "split": "train",
     },
     "C102": {
         "component_id": "C102",
@@ -113,6 +117,10 @@ MOCK_COMPONENTS: Dict[str, dict] = {
         "confidence": 0.90,
         "slope_reject_flag": True,
         "reliability_tier": "High-Risk",
+        "drift_score": 78.5,
+        "reliability_index": 18.0,
+        "model_version": "sage-1.1",
+        "split": "test",
     },
     "C201": {
         "component_id": "C201",
@@ -179,6 +187,28 @@ MOCK_REPORTS: Dict[str, dict] = {
         "model_version": "sage-1.1",
         "slope_reject_flag": True,
         "reliability_tier": "High-Risk",
+        "drift_score": 78.5,
+        "predicted_drift_score": 82.0,
+        "reliability_index": 18.0,
+        "lot_relative_score": 9.61,
+        "multivariate_score": 81.0,
+        "worst_lot_zscore": 9.61,
+        "absolute_spec_fail": 1,
+        "interval_low": 45.0,
+        "interval_high": 52.0,
+        "uncertainty_score": 15.0,
+        "explanations": [
+            {
+                "feature": "Leakage_slope",
+                "contribution": 0.582,
+                "reason": "Predicted Leakage 168h drift driven mainly by Leakage_slope(+0.582)",
+            },
+            {
+                "feature": "Lot_Relative",
+                "contribution": 9.61,
+                "reason": "Batch-relative outlier (z=9.61 vs its own lot)",
+            },
+        ],
     },
 }
 

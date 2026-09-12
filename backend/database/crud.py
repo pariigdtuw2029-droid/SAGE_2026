@@ -301,9 +301,15 @@ def get_lot_components(lot_id: str, db: Optional[Session] = None) -> List[dict]:
         ).first()
         slope_flag = None
         rel_tier = None
+        drift_score = None
+        model_version = None
         if ra is not None:
             slope_flag = bool(ra.slope_reject_flag) if ra.slope_reject_flag is not None else None
             rel_tier = ra.reliability_tier
+            drift_score = ra.drift_score
+            model_version = ra.model_version
+        if model_version is None and pred is not None:
+            model_version = pred.model_version
         results.append({
             "component_id": comp.component_id,
             "lot_id": comp.lot_id,
@@ -318,6 +324,8 @@ def get_lot_components(lot_id: str, db: Optional[Session] = None) -> List[dict]:
             "reliability_tier": rel_tier,
             "reliability_index": comp.reliability_index,
             "split": comp.split,
+            "drift_score": drift_score,
+            "model_version": model_version,
         })
     return results
 

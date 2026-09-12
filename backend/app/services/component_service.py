@@ -20,17 +20,33 @@ except Exception:
 
 
 def get_component(component_id: str) -> Optional[dict]:
-    comp = crud.get_component(component_id)
-    if comp is not None:
-        risk = crud.get_component_risk(component_id)
-        if risk is not None:
-            raw_slope = risk.get("slope_reject_flag")
-            comp["slope_reject_flag"] = bool(raw_slope) if raw_slope is not None else None
-            comp["reliability_tier"] = risk.get("reliability_tier")
-        else:
-            comp.setdefault("slope_reject_flag", None)
-            comp.setdefault("reliability_tier", None)
-        return comp
+    try:
+        with crud.session_scope() as s:
+            comp = crud.get_component(component_id, db=s)
+            if comp is not None:
+                risk = crud.get_component_risk(component_id, db=s)
+                if risk is not None:
+                    raw_slope = risk.get("slope_reject_flag")
+                    comp["slope_reject_flag"] = bool(raw_slope) if raw_slope is not None else None
+                    comp["reliability_tier"] = risk.get("reliability_tier")
+                    comp["drift_score"] = risk.get("drift_score")
+                    comp["model_version"] = risk.get("model_version")
+                    if comp.get("reliability_index") is None:
+                        comp["reliability_index"] = risk.get("reliability_index")
+                else:
+                    comp.setdefault("slope_reject_flag", None)
+                    comp.setdefault("reliability_tier", None)
+                    comp.setdefault("drift_score", None)
+                    comp.setdefault("model_version", None)
+
+                if comp.get("model_version") is None:
+                    pred = crud.get_component_prediction(component_id, db=s)
+                    if pred and pred.get("model_version"):
+                        comp["model_version"] = pred.get("model_version")
+
+                return comp
+    except Exception:
+        pass
     return mock_data.MOCK_COMPONENTS.get(component_id)
 
 
@@ -67,17 +83,21 @@ def _adapt_predicted_point(pt: dict) -> Optional[dict]:
 
 
 def get_trajectory(component_id: str) -> Optional[dict]:
-    trajectory = crud.get_component_trajectory(component_id)
-    if trajectory is not None:
-        adapted_trajectory = dict(trajectory)
-        if "predicted" in adapted_trajectory and isinstance(adapted_trajectory["predicted"], list):
-            adapted_predicted = []
-            for pt in adapted_trajectory["predicted"]:
-                adapted_pt = _adapt_predicted_point(pt)
-                if adapted_pt is not None:
-                    adapted_predicted.append(adapted_pt)
-            adapted_trajectory["predicted"] = adapted_predicted
-        return adapted_trajectory
+    try:
+        with crud.session_scope() as s:
+            trajectory = crud.get_component_trajectory(component_id, db=s)
+            if trajectory is not None:
+                adapted_trajectory = dict(trajectory)
+                if "predicted" in adapted_trajectory and isinstance(adapted_trajectory["predicted"], list):
+                    adapted_predicted = []
+                    for pt in adapted_trajectory["predicted"]:
+                        adapted_pt = _adapt_predicted_point(pt)
+                        if adapted_pt is not None:
+                            adapted_predicted.append(adapted_pt)
+                    adapted_trajectory["predicted"] = adapted_predicted
+                return adapted_trajectory
+    except Exception:
+        pass
 
     if component_id not in mock_data.MOCK_COMPONENTS:
         return None
@@ -87,9 +107,44 @@ def get_trajectory(component_id: str) -> Optional[dict]:
 
 
 def get_report(component_id: str) -> Optional[dict]:
-    report = crud.get_component_report(component_id)
-    if report is not None:
-        return report
+    try:
+        with crud.session_scope() as s:
+            report = crud.get_component_report(component_id, db=s)
+            if report is not None:
+                rep = dict(report)
+                risk = rep.get("risk_assessment") or {}
+                pred = rep.get("prediction") or {}
+
+                # Pass through ML fields to the top-level response schema
+                if "drift_score" not in rep or rep["drift_score"] is None:
+                    rep["drift_score"] = risk.get("drift_score")
+                if "predicted_drift_score" not in rep or rep["predicted_drift_score"] is None:
+                    rep["predicted_drift_score"] = risk.get("predicted_drift_score")
+                if "reliability_index" not in rep or rep["reliability_index"] is None:
+                    rep["reliability_index"] = risk.get("reliability_index")
+                if "lot_relative_score" not in rep or rep["lot_relative_score"] is None:
+                    rep["lot_relative_score"] = risk.get("lot_relative_score")
+                if "multivariate_score" not in rep or rep["multivariate_score"] is None:
+                    rep["multivariate_score"] = risk.get("multivariate_score")
+                if "worst_lot_zscore" not in rep or rep["worst_lot_zscore"] is None:
+                    rep["worst_lot_zscore"] = risk.get("worst_lot_zscore")
+                if "absolute_spec_fail" not in rep or rep["absolute_spec_fail"] is None:
+                    rep["absolute_spec_fail"] = risk.get("absolute_spec_fail")
+
+                if "interval_low" not in rep or rep["interval_low"] is None:
+                    rep["interval_low"] = pred.get("interval_low")
+                if "interval_high" not in rep or rep["interval_high"] is None:
+                    rep["interval_high"] = pred.get("interval_high")
+                if "uncertainty_score" not in rep or rep["uncertainty_score"] is None:
+                    rep["uncertainty_score"] = pred.get("uncertainty_score")
+
+                if not rep.get("model_version"):
+                    rep["model_version"] = risk.get("model_version") or pred.get("model_version")
+
+                return rep
+    except Exception:
+        pass
+
     if component_id not in mock_data.MOCK_COMPONENTS:
         return None
     return mock_data.MOCK_REPORTS.get(

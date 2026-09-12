@@ -16,105 +16,304 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
-    <section class="box">
-      <h2 class="box-title">Status Card</h2>
-      <div class="kpi-row" id="statusRow" style="margin-bottom:0;"></div>
-    </section>
+    <!-- State view for Loading / 404 / Error -->
+    <div id="stateView" style="display:none;"></div>
 
-    <section class="box">
-      <h2 class="box-title">Parameter Drift Chart</h2>
-      <p class="box-sub">Solid = measured · ringed = predicted 168h</p>
-      <canvas class="chart" id="driftChart"></canvas>
-      <div class="legend" id="driftLegend"></div>
-    </section>
+    <!-- Main analysis view -->
+    <div id="analysisView">
+      <section class="box">
+        <div id="metaHeader" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;" id="metaPills"></div>
+          <div id="reportAction"></div>
+        </div>
+        <h2 class="box-title">Screening & ML Status</h2>
+        <div class="kpi-row" id="statusRow" style="margin-bottom:0;"></div>
+      </section>
 
-    <section class="box">
-      <h2 class="box-title">Risk Breakdown <span style="color:var(--steel-dim);text-transform:none;">(Anomaly + Drift + Uncertainty)</span></h2>
-      <canvas class="chart" id="riskBars"></canvas>
-    </section>
+      <div class="grid-2">
+        <section class="box">
+          <h2 class="box-title">168h Forecast & Uncertainty</h2>
+          <div class="kpi-row" id="forecastKpis" style="margin-bottom:14px;grid-template-columns:1fr 1fr;"></div>
+          <div id="forecastDetails" style="font-family:var(--mono);font-size:12px;color:var(--steel);line-height:1.7;"></div>
+        </section>
 
-    <section class="box">
-      <h2 class="box-title">Why This Component Was Flagged</h2>
-      <ul class="exp-list" id="expList"></ul>
-    </section>
+        <section class="box">
+          <h2 class="box-title">Multi-Parameter Risk Evidence</h2>
+          <div class="kpi-row" id="evidenceKpis" style="margin-bottom:14px;grid-template-columns:1fr 1fr;"></div>
+          <div id="evidenceDetails" style="font-family:var(--mono);font-size:12px;color:var(--steel);line-height:1.7;"></div>
+        </section>
+      </div>
+
+      <section class="box">
+        <h2 class="box-title">Parameter Drift Chart</h2>
+        <p class="box-sub">Solid = measured checkpoints (0h, 24h, 96h, 168h) · ringed = forecast trajectory</p>
+        <canvas class="chart" id="driftChart"></canvas>
+        <div class="legend" id="driftLegend"></div>
+      </section>
+
+      <section class="box">
+        <h2 class="box-title">Risk Breakdown <span style="color:var(--steel-dim);text-transform:none;">(Anomaly + Drift + Uncertainty)</span></h2>
+        <canvas class="chart" id="riskBars"></canvas>
+      </section>
+
+      <section class="box">
+        <h2 class="box-title">Why This Component Was Flagged <span style="color:var(--steel-dim);text-transform:none;">(Model Explainability & Feature Contributions)</span></h2>
+        <div id="expCards" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:12px;margin-bottom:16px;"></div>
+        <ul class="exp-list" id="expList"></ul>
+      </section>
+    </div>
   </main>
 </div>
 
 <script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
-  const { data, charts, topbar, renderSidebar, param, dotFor } = window.SAGE;
+  const { charts, topbar, renderSidebar, param, dotFor, badge } = window.SAGE;
 
   renderSidebar("components.html");
-  const rawId = param("comp") || "C104";
-  const id = rawId.toUpperCase();
+
+  const rawParam = param("comp") || param("id");
+  const defaultDemoId = "C504"; // Flagship real database component
+  const id = (rawParam ? rawParam.trim() : defaultDemoId).toUpperCase();
   const backLot = param("lot");
 
+  function fmt(val, digits = 1) {
+    if (val == null || isNaN(val)) return "—";
+    return Number(val).toFixed(digits);
+  }
+
+  function fmtPct(val) {
+    if (val == null || isNaN(val)) return "—";
+    const num = Number(val);
+    return num <= 1.0 ? `${(num * 100).toFixed(0)}%` : `${num.toFixed(0)}%`;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function renderState(title, message, isError = true, actionHtml = "") {
+    document.getElementById("analysisView").style.display = "none";
+    const s = document.getElementById("stateView");
+    s.style.display = "block";
+    s.innerHTML = `
+      <section class="box" style="text-align:center;padding:50px 24px;margin-top:20px;">
+        <div style="font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:0.08em;color:${isError ? 'var(--reject)' : 'var(--sky)'};margin-bottom:12px;text-transform:uppercase;">
+          ${title}
+        </div>
+        <p style="color:var(--steel);max-width:560px;margin:0 auto 24px;font-family:var(--mono);font-size:12.5px;line-height:1.6;">
+          ${message}
+        </p>
+        <div class="console-actions" style="justify-content:center;gap:12px;">
+          ${actionHtml || '<a class="btn" href="components.html">Back to Components</a>'}
+        </div>
+      </section>
+    `;
+  }
+
   async function renderComponent() {
-    let c = null;
-    let liveTraj = null;
-    let liveReport = null;
-    let isLive = false;
+    renderState("Loading Analysis", `Fetching screening snapshot, telemetry trajectory, and ML report for ${escapeHtml(id)}...`, false, `
+      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
+    `);
 
-    // Attempt live API fetches
-    const [compRes, trajRes, repRes] = await Promise.all([
-      window.ASTRAGuardAPI.getComponent(id),
-      window.ASTRAGuardAPI.getComponentTrajectory(id),
-      window.ASTRAGuardAPI.getComponentReport(id),
-    ]);
-
-    if (compRes.ok && compRes.data) {
-      isLive = true;
-      const d = compRes.data;
-      c = {
-        id: d.component_id,
-        lotId: d.lot_id,
-        type: d.status || "Screened",
-        risk: d.risk_score,
-        anomaly: d.anomaly_score,
-        drift: d.predicted_168h,
-        uncertainty: 28.0,
-        decision: d.decision || d.status,
-        tier: d.reliability_tier || (d.risk_score >= 65 ? "High-Risk" : d.risk_score >= 35 ? "Borderline" : "Space-Safe"),
-        reliabilityIndex: Math.round((100 - d.risk_score) * 10) / 10,
-        confidence: d.confidence,
-        slope_reject_flag: d.slope_reject_flag,
-        explanations: (repRes.ok && repRes.data && repRes.data.reasons) ? repRes.data.reasons : [],
-      };
-      liveTraj = trajRes.ok ? trajRes.data : null;
-      liveReport = repRes.ok ? repRes.data : null;
-    } else {
-      c = data.compById(id) || data.compById("C1739") || data.components[0];
+    let compRes, trajRes, repRes;
+    try {
+      [compRes, trajRes, repRes] = await Promise.all([
+        window.ASTRAGuardAPI.getComponent(id),
+        window.ASTRAGuardAPI.getComponentTrajectory(id),
+        window.ASTRAGuardAPI.getComponentReport(id),
+      ]);
+    } catch (err) {
+      renderState("Connection Failed", "Unable to communicate with the ASTRA-GUARD backend API at http://127.0.0.1:8000. Please check your network connection.", true, `
+        <button class="btn" onclick="location.reload()">Retry</button>
+        <a class="btn ghost" href="components.html">Back to Components</a>
+      `);
+      return;
     }
+
+    if (!compRes.ok) {
+      if (compRes.status === 404) {
+        topbar(`Component ${escapeHtml(id)} · Not Found`, "components.html", "Back to Components");
+        renderState(
+          "Component Not Found (404)",
+          `Component "<strong>${escapeHtml(id)}</strong>" does not exist in the screening database. No fake data will be displayed.`,
+          true,
+          `<a class="btn" href="components.html">Back to Components</a>
+           <a class="btn ghost" href="burn-in.html">Upload New Data</a>`
+        );
+      } else {
+        renderState(
+          "Backend Request Failed",
+          `Server returned status ${compRes.status}: ${escapeHtml(compRes.error || "Unknown error")}.`,
+          true,
+          `<button class="btn" onclick="location.reload()">Retry</button>`
+        );
+      }
+      return;
+    }
+
+    // Success: reveal analysis view
+    document.getElementById("stateView").style.display = "none";
+    document.getElementById("analysisView").style.display = "block";
+
+    const comp = compRes.data;
+    const rep = (repRes && repRes.ok && repRes.data) ? repRes.data : {};
+    const liveTraj = (trajRes && trajRes.ok && trajRes.data) ? trajRes.data : null;
+
+    // Harmonize authoritative fields from comp + rep
+    const c = {
+      id: comp.component_id,
+      lotId: comp.lot_id,
+      status: comp.status || "Screened",
+      risk_level: comp.risk_level || (rep.risk_score >= 80 ? "CRITICAL" : rep.risk_score >= 60 ? "HIGH" : rep.risk_score >= 30 ? "MEDIUM" : "LOW"),
+      decision: comp.decision || rep.decision || "—",
+      confidence: comp.confidence ?? rep.confidence,
+      slope_reject_flag: Boolean(comp.slope_reject_flag ?? rep.slope_reject_flag),
+      reliability_tier: comp.reliability_tier || rep.reliability_tier || "—",
+      reliability_index: comp.reliability_index ?? rep.reliability_index,
+      anomaly_score: comp.anomaly_score ?? rep.anomaly_score,
+      risk_score: comp.risk_score ?? rep.risk_score,
+      drift_score: comp.drift_score ?? rep.drift_score,
+      predicted_drift_score: rep.predicted_drift_score,
+      predicted_168h: comp.predicted_168h ?? rep.predicted_168h,
+      interval_low: rep.interval_low,
+      interval_high: rep.interval_high,
+      uncertainty_score: rep.uncertainty_score,
+      lot_relative_score: rep.lot_relative_score,
+      multivariate_score: rep.multivariate_score,
+      worst_lot_zscore: rep.worst_lot_zscore,
+      absolute_spec_fail: rep.absolute_spec_fail,
+      model_version: comp.model_version || rep.model_version || "—",
+      split: comp.split || "—",
+      explanations: (rep.explanations && Array.isArray(rep.explanations)) ? rep.explanations : [],
+      reasons: (rep.reasons && Array.isArray(rep.reasons)) ? rep.reasons : [],
+    };
 
     const fromLot = backLot && backLot === c.lotId ? backLot : c.lotId;
     topbar(
-      `Component ${c.id} ${isLive ? '<span class="badge safe" style="margin-left:8px;font-size:11px;">LIVE</span>' : ''}`,
+      `Component ${escapeHtml(c.id)} <span class="badge safe" style="margin-left:8px;font-size:10px;vertical-align:middle;">LIVE API</span>`,
       fromLot ? `lot-detail.html?lot=${encodeURIComponent(fromLot)}` : "components.html",
-      fromLot ? `Back to ${fromLot}` : "Back to Database"
+      fromLot ? `Back to ${fromLot}` : "Back to Components"
     );
 
-    const tierDot = c.tier === "Space-Safe" ? "safe" : c.tier === "High-Risk" ? "reject" : "monitor";
-    const slopeBadge = c.slope_reject_flag ? `<span class="badge reject" style="margin-left:6px;font-size:10px;" title="Flagged by early slope-rejection safety rule">SLOPE REJECT</span>` : "";
+    // Meta pills header
+    const decClass = (c.decision || "").toLowerCase();
+    const tierClass = c.reliability_tier === "Space-Safe" ? "safe" : c.reliability_tier === "High-Risk" ? "reject" : "monitor";
+    const tierDot = tierClass;
 
-    document.getElementById("statusRow").innerHTML = [
-      ["Risk Score", `${c.risk}`],
-      ["Decision", `${c.decision} · conf ${c.confidence}`],
-      ["Reliability Index", `${c.reliabilityIndex}`],
-      ["Tier", `${c.tier}`],
-      ["Lot / Status", `${c.lotId} · ${c.type}`],
-    ].map(([l, v], i) => `
+    document.getElementById("metaPills").innerHTML = `
+      <span style="font-family:var(--mono);font-size:12px;color:var(--steel);margin-right:4px;">Lot:</span>
+      <a class="backlink" href="lot-detail.html?lot=${encodeURIComponent(c.lotId)}" style="font-size:11px;padding:3px 10px;">${escapeHtml(c.lotId)}</a>
+      <span class="badge ${decClass}">${escapeHtml(c.decision)}</span>
+      <span class="badge ${tierClass}">${escapeHtml(c.reliability_tier)}</span>
+      <span class="badge neutral">Risk: ${escapeHtml(c.risk_level)}</span>
+      ${c.model_version !== "—" ? `<span class="badge neutral">Model: ${escapeHtml(c.model_version)}</span>` : ""}
+      ${c.split !== "—" ? `<span class="badge neutral">Split: ${escapeHtml(c.split)}</span>` : ""}
+      ${c.slope_reject_flag ? `<span class="badge reject" title="Flagged by early slope-rejection safety rule">SLOPE REJECT</span>` : ""}
+    `;
+
+    document.getElementById("reportAction").innerHTML = `
+      <a class="btn ghost" href="reports.html?comp=${encodeURIComponent(c.id)}" style="font-size:11px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+        <span>Audit Report</span> →
+      </a>
+    `;
+
+    // 7 KPI Metric Cards
+    const kpis = [
+      ["Risk Score", fmt(c.risk_score), `<span class="dot ${dotFor(c.decision)}"></span>`, `level: ${escapeHtml(c.risk_level)}`],
+      ["Decision", escapeHtml(c.decision), c.slope_reject_flag ? `<span class="badge reject" style="font-size:9px;">SLOPE</span>` : "", `conf: ${fmtPct(c.confidence)}`],
+      ["Anomaly Score", fmt(c.anomaly_score), "", "isolation metric"],
+      ["Current Drift", fmt(c.drift_score), "", "measured parameter drift"],
+      ["Predicted @168h", fmt(c.predicted_168h, 3), "", "168h end-of-test value"],
+      ["Reliability Index", fmt(c.reliability_index), `<span class="dot ${tierDot}"></span>`, `tier: ${escapeHtml(c.reliability_tier)}`],
+      ["Forecast Uncertainty", fmt(c.uncertainty_score), "", "conformal interval width"],
+    ];
+
+    document.getElementById("statusRow").innerHTML = kpis.map(([label, val, badgeHtml, sub]) => `
       <div class="kpi">
-        <div class="kpi-label">${l}</div>
-        <div class="kpi-value" style="font-size:20px;">
-          ${v} ${i === 0 ? `<span class="dot ${dotFor(c.decision)}"></span>` : ""}
-          ${i === 1 ? slopeBadge : ""}
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value" style="font-size:22px;">
+          ${val} ${badgeHtml}
         </div>
-        ${i === 3 ? `<div class="kpi-sub"><span class="dot ${tierDot}"></span> ${c.tier === "Space-Safe" ? "certified" : c.tier === "High-Risk" ? "flagged ✕" : "watch"}</div>` : ""}
-      </div>`).join("");
+        ${sub ? `<div class="kpi-sub">${sub}</div>` : ""}
+      </div>
+    `).join("");
+
+    // 168h Forecast & Uncertainty
+    const intervalStr = (c.interval_low != null && c.interval_high != null)
+      ? `${fmt(c.interval_low, 3)} — ${fmt(c.interval_high, 3)}`
+      : "—";
+
+    document.getElementById("forecastKpis").innerHTML = `
+      <div class="kpi" style="padding:12px 14px;">
+        <div class="kpi-label">168h Forecast Value</div>
+        <div class="kpi-value" style="font-size:20px;color:var(--gold);">${fmt(c.predicted_168h, 3)}</div>
+        <div class="kpi-sub">Point prediction</div>
+      </div>
+      <div class="kpi" style="padding:12px 14px;">
+        <div class="kpi-label">Predicted Drift @168h</div>
+        <div class="kpi-value" style="font-size:20px;color:var(--sky);">${fmt(c.predicted_drift_score, 2)}</div>
+        <div class="kpi-sub">Projected degradation</div>
+      </div>
+    `;
+
+    document.getElementById("forecastDetails").innerHTML = `
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+        <span>Conformal Prediction Interval:</span>
+        <span style="color:var(--signal);">${intervalStr}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+        <span>Forecast Uncertainty Score:</span>
+        <span style="color:var(--signal);">${fmt(c.uncertainty_score)} / 100</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;">
+        <span>Datasheet Safety Limit:</span>
+        <span style="color:var(--steel-dim);">${liveTraj && liveTraj.safety_limit != null ? `${liveTraj.safety_limit} µA` : "Nominal"}</span>
+      </div>
+    `;
+
+    // Multi-Parameter Risk Evidence
+    document.getElementById("evidenceKpis").innerHTML = `
+      <div class="kpi" style="padding:12px 14px;">
+        <div class="kpi-label">Lot-Relative Outlier</div>
+        <div class="kpi-value" style="font-size:20px;color:var(--sky);">${fmt(c.lot_relative_score)}</div>
+        <div class="kpi-sub">Batch z-score signal</div>
+      </div>
+      <div class="kpi" style="padding:12px 14px;">
+        <div class="kpi-label">Multivariate Score</div>
+        <div class="kpi-value" style="font-size:20px;color:var(--violet);">${fmt(c.multivariate_score)}</div>
+        <div class="kpi-sub">Cross-param anomaly</div>
+      </div>
+    `;
+
+    const specFailBadge = c.absolute_spec_fail === 1
+      ? `<span class="badge reject">VIOLATION DETECTED</span>`
+      : `<span class="badge safe">NO VIOLATION (0)</span>`;
+
+    document.getElementById("evidenceDetails").innerHTML = `
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+        <span>Worst Intra-Lot Z-Score:</span>
+        <span style="color:var(--signal);">${fmt(c.worst_lot_zscore, 2)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+        <span>Absolute Datasheet Spec:</span>
+        <span>${specFailBadge}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;">
+        <span>Slope Rejection Flag:</span>
+        <span style="color:${c.slope_reject_flag ? 'var(--reject)' : 'var(--safe)'};">${c.slope_reject_flag ? 'EXCEEDED (Rejection rule)' : 'PASS (Safe envelope)'}</span>
+      </div>
+    `;
 
     // Trajectory / parameter chart
     if (liveTraj && Array.isArray(liveTraj.actual) && liveTraj.actual.length > 0) {
+      document.getElementById("driftChart").style.display = "block";
       const actualPts = liveTraj.actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
       const predPts = (liveTraj.predicted || []).map((p) => ({ x: p.time, y: p.value, forecast: true }));
       const allPts = [...actualPts, ...predPts];
@@ -130,47 +329,55 @@
       const lastPred = predPts.length ? predPts[predPts.length - 1] : null;
       document.getElementById("driftLegend").innerHTML = `
         <span class="item"><span class="dot ${dotFor(c.decision)}"></span> Measured (${actualPts[0].x}h: ${actualPts[0].y} → ${lastActual.x}h: ${lastActual.y} µA)</span>
-        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted 168h (${lastPred.y} µA)</span>` : ""}
+        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted 168h (${fmt(lastPred.y, 3)} µA)</span>` : ""}
         ${liveTraj.safety_limit ? `<span class="item" style="color:var(--steel-dim);">Safety Limit: ${liveTraj.safety_limit} µA</span>` : ""}
         <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(c.id)}/trajectory</span>`;
     } else {
-      const m = c.measurements || (data.components[0] && data.components[0].measurements);
-      if (m) {
-        const idx = (vals) => vals.map((v) => Math.round((v / vals[0]) * 1000) / 10);
-        charts.lineChart(document.getElementById("driftChart"), [
-          { points: idx(m.leakage).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.reject },
-          { points: idx(m.resistance).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.sky },
-          { points: idx(m.vth).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.gold },
-        ], {
-          height: 250,
-          xTick: (x) => `${x}h`,
-        });
-        document.getElementById("driftLegend").innerHTML = `
-          <span class="item"><span class="dot reject"></span> Leakage — ${m.leakage[0]} → ${m.leakage[3]} µA</span>
-          <span class="item"><span class="dot sky" style="background:var(--sky);"></span> Resistance — ${m.resistance[0]} → ${m.resistance[3]} Ω</span>
-          <span class="item"><span class="dot hold"></span> Vth — ${m.vth[0]} → ${m.vth[3]} V</span>
-          <span class="item" style="color:var(--steel-dim);">y-axis: index, 0h = 100</span>`;
-      }
+      document.getElementById("driftChart").style.display = "none";
+      document.getElementById("driftLegend").innerHTML = `<span style="color:var(--steel-dim);font-family:var(--mono);">No trajectory points stored for ${escapeHtml(c.id)}.</span>`;
     }
 
-    // Risk bars
-    charts.hbarChart(document.getElementById("riskBars"), [
-      { label: "Anomaly Score", value: c.anomaly,     color: window.SAGE.COLORS.sky },
-      { label: "Drift / 168h",  value: c.drift,       color: window.SAGE.COLORS.gold },
-      { label: "Uncertainty",   value: c.uncertainty, color: window.SAGE.COLORS.steel },
-      { label: "Risk Score",    value: c.risk,        color: c.risk >= 65 ? window.SAGE.COLORS.reject : c.risk >= 35 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
-    ], { height: 190 });
+    // Risk bars (real ML metrics)
+    const riskBarsData = [
+      { label: "Anomaly Score", value: c.anomaly_score != null ? c.anomaly_score : 0, color: window.SAGE.COLORS.sky },
+      { label: "Current Drift", value: c.drift_score != null ? c.drift_score : 0, color: window.SAGE.COLORS.gold },
+      { label: "Uncertainty",   value: c.uncertainty_score != null ? c.uncertainty_score : 0, color: window.SAGE.COLORS.steel },
+      { label: "Risk Score",    value: c.risk_score != null ? c.risk_score : 0, color: c.risk_score >= 60 ? window.SAGE.COLORS.reject : c.risk_score >= 30 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
+    ];
+    charts.hbarChart(document.getElementById("riskBars"), riskBarsData, { height: 190 });
 
-    // Explanations list
+    // Explanations Section: Render structured explanations dynamically
+    const cardsContainer = document.getElementById("expCards");
+    if (c.explanations && c.explanations.length > 0) {
+      cardsContainer.innerHTML = c.explanations.map((exp) => {
+        const feat = escapeHtml(exp.feature || "Feature");
+        const reason = escapeHtml(exp.reason || "Attribution reason");
+        const contrib = exp.contribution != null
+          ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`)
+          : null;
+        return `
+          <div style="background:rgba(13,22,36,0.8);border:1px solid var(--line-strong);border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span class="badge neutral" style="font-size:10px;text-transform:uppercase;">${feat}</span>
+              ${contrib ? `<span style="font-family:var(--mono);font-weight:600;color:var(--sky);font-size:12px;">${contrib}</span>` : ""}
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--frost);line-height:1.4;">
+              ${reason}
+            </div>
+          </div>
+        `;
+      }).join("");
+    } else {
+      cardsContainer.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--steel-dim);grid-column:1/-1;">No structured explanation items available.</div>`;
+    }
+
+    // Bullet reasons
     const ul = document.getElementById("expList");
-    const reasons = (c.explanations && c.explanations.length > 0)
-      ? c.explanations
-      : [
-          `Leakage delta within lot envelope`,
-          `Traditional limit check passed`,
-          `Stable forecast to 168h`,
-        ];
-    ul.innerHTML = reasons.map((e) => `<li>${e}</li>`).join("");
+    if (c.reasons && c.reasons.length > 0) {
+      ul.innerHTML = c.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+    } else {
+      ul.innerHTML = `<li class="ok">All measurements nominal and within expected population drift envelope.</li>`;
+    }
   }
 
   renderComponent();
