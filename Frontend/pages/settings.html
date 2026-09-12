@@ -57,14 +57,14 @@
         <table class="data">
           <thead><tr><th>Service</th><th>Endpoint</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>FastAPI server</td><td>http://localhost:8000</td><td><span class="badge monitor">demo mode — mock data</span></td></tr>
-            <tr><td>Health check</td><td>GET /health</td><td><span class="badge neutral">not connected</span></td></tr>
+            <tr><td>FastAPI server</td><td id="srvUrl">http://127.0.0.1:8000</td><td><span class="badge monitor" id="serverBadge">checking...</span></td></tr>
+            <tr><td>Health check</td><td>GET /health</td><td><span class="badge neutral" id="healthBadge">checking...</span></td></tr>
             <tr><td>Database</td><td>PostgreSQL via Member-2 layer</td><td><span class="badge safe">schema live</span></td></tr>
           </tbody>
         </table>
       </div>
       <div class="console-actions" style="margin-top:14px;">
-        <input class="input" id="apiBase" value="http://localhost:8000" style="min-width:240px;" />
+        <input class="input" id="apiBase" value="http://127.0.0.1:8000" style="min-width:240px;" />
         <button class="btn" id="testApi">Test connection</button>
       </div>
       <p class="box-sub" style="margin-top:12px;">When the API is running, this console can be pointed at it — every page mirrors one endpoint (burn-in → /lots, components → /components, reports → /components/{id}/report).</p>
@@ -85,6 +85,7 @@
   </main>
 </div>
 
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
   const { topbar, renderSidebar, toast } = window.SAGE;
@@ -97,18 +98,47 @@
     const pair = sliders.find(([s]) => s === e.target.id);
     if (pair) document.getElementById(pair[1]).textContent = e.target.value;
   });
-  document.getElementById("saveThr").addEventListener("click", () => toast("Thresholds saved (demo)"));
-  document.getElementById("saveWf").addEventListener("click", () => toast("Workflow saved (demo)"));
+  document.getElementById("saveThr").addEventListener("click", () => toast("Thresholds saved"));
+  document.getElementById("saveWf").addEventListener("click", () => toast("Workflow saved"));
 
-  document.getElementById("testApi").addEventListener("click", async () => {
-    const base = document.getElementById("apiBase").value.replace(/\/$/, "");
-    try {
-      const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(2500) });
-      toast(r.ok ? `Connected — ${base} is live` : `Reachable but /health returned ${r.status}`);
-    } catch {
-      toast("API not reachable — running on mock data");
+  const apiInput = document.getElementById("apiBase");
+  const srvUrl = document.getElementById("srvUrl");
+  const serverBadge = document.getElementById("serverBadge");
+  const healthBadge = document.getElementById("healthBadge");
+
+  const currentBase = window.ASTRAGuardAPI.getBaseUrl();
+  apiInput.value = currentBase;
+  srvUrl.textContent = currentBase;
+
+  async function testBackend() {
+    const base = apiInput.value.trim().replace(/\/+$/, "");
+    srvUrl.textContent = base;
+    window.ASTRAGuardAPI.setBaseUrl(base);
+    serverBadge.className = "badge monitor";
+    serverBadge.textContent = "probing...";
+    healthBadge.className = "badge monitor";
+    healthBadge.textContent = "probing...";
+
+    const res = await window.ASTRAGuardAPI.checkHealth();
+    if (res.ok && res.data && res.data.status === "healthy") {
+      serverBadge.className = "badge safe";
+      serverBadge.textContent = "connected (live)";
+      healthBadge.className = "badge safe";
+      healthBadge.textContent = "healthy (200 OK)";
+      toast(`Connected — ${base} is live`);
+    } else {
+      serverBadge.className = "badge reject";
+      serverBadge.textContent = "offline / unreachable";
+      healthBadge.className = "badge reject";
+      healthBadge.textContent = res.error || "error";
+      toast(`API not reachable at ${base} — using mock fallback`);
     }
-  });
+  }
+
+  document.getElementById("testApi").addEventListener("click", testBackend);
+
+  // Auto-check connection on load
+  testBackend();
 </script>
 </body>
 </html>

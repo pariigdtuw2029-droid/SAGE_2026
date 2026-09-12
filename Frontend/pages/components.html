@@ -23,7 +23,6 @@
         <option value="">All Status</option>
         <option>PASS</option><option>MONITOR</option><option>HOLD</option><option>REJECT</option>
       </select>
-      <select class="select" id="fType"><option value="">All Types</option></select>
       <button class="btn ghost" id="clear">Clear</button>
       <span class="box-sub" id="count" style="margin:0 0 0 auto;"></span>
     </div>
@@ -32,7 +31,7 @@
       <div class="table-wrap">
         <table class="data" id="compTable">
           <thead>
-            <tr><th>ID</th><th>Lot</th><th>Type</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Tier</th></tr>
+            <tr><th>ID</th><th>Lot</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Tier</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -41,60 +40,159 @@
   </main>
 </div>
 
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
-  const { data, topbar, renderSidebar, badge } = window.SAGE;
+  const { topbar, renderSidebar, badge } = window.SAGE;
 
   renderSidebar("components.html");
-  topbar("Component Database", null, null, `<span class="box-sub" style="margin:0;">GET /components — full history per part</span>`);
+  topbar("Component Database", null, null, `<span class="box-sub" style="margin:0;">GET /api/lots/{lot_id}/components — verified database screening</span>`);
 
   const lotsSel = document.getElementById("fLot");
-  for (const l of data.lots) {
-    const o = document.createElement("option");
-    o.value = l.lotId; o.textContent = l.lotId;
-    lotsSel.appendChild(o);
-  }
-  const typeSel = document.getElementById("fType");
-  for (const tp of [...new Set(data.components.map((c) => c.type))]) {
-    const o = document.createElement("option");
-    o.value = tp; o.textContent = tp;
-    typeSel.appendChild(o);
-  }
-
-  const tbody = document.querySelector("#compTable tbody");
+  const qInput = document.getElementById("q");
+  const decSel = document.getElementById("fDec");
+  const clearBtn = document.getElementById("clear");
   const countEl = document.getElementById("count");
+  const tbody = document.querySelector("#compTable tbody");
 
-  function render() {
-    const q = document.getElementById("q").value.trim().toUpperCase();
-    const lot = lotsSel.value, dec = document.getElementById("fDec").value, tp = typeSel.value;
-    const rows = data.components.filter((c) =>
-      (!q || c.id.includes(q)) && (!lot || c.lotId === lot) && (!dec || c.decision === dec) && (!tp || c.type === tp)
-    );
-    countEl.textContent = `${rows.length.toLocaleString()} components`;
-    tbody.innerHTML = rows.slice(0, 150).map((c) => `
-      <tr class="click" data-c="${c.id}" data-lot="${c.lotId}">
-        <td>${c.id}</td><td>${c.lotId}</td><td>${c.type}</td>
-        <td>${c.anomaly}</td><td>${c.drift}</td><td>${c.risk}</td>
-        <td>${badge(c.decision)}</td>
-        <td>${c.tier}</td>
-      </tr>`).join("") || `<tr><td colspan="8" style="color:var(--steel-dim);">No matches</td></tr>`;
-    if (rows.length > 150) {
-      tbody.insertAdjacentHTML("beforeend",
-        `<tr><td colspan="8" style="color:var(--steel-dim);">…and ${(rows.length - 150).toLocaleString()} more — refine the filters</td></tr>`);
+  let currentComps = [];
+  let isLoading = false;
+  let loadError = null;
+
+  // Populate lot dropdown with real database lots
+  async function loadLots() {
+    const res = await window.ASTRAGuardAPI.getLots();
+    if (res.ok && Array.isArray(res.data)) {
+      for (const l of res.data) {
+        const o = document.createElement("option");
+        o.value = l.lot_id;
+        o.textContent = l.lot_id;
+        lotsSel.appendChild(o);
+      }
+    } else {
+      loadError = "Failed to load lots from backend.";
+      render();
     }
   }
 
-  document.querySelectorAll("#q, #fLot, #fDec, #fType").forEach((el) => el.addEventListener("input", render));
-  document.getElementById("clear").addEventListener("click", () => {
-    document.getElementById("q").value = "";
-    lotsSel.value = ""; document.getElementById("fDec").value = ""; typeSel.value = "";
+  // Fetch components when a real lot is selected
+  async function onLotChange() {
+    const lotId = lotsSel.value;
+    loadError = null;
+
+    if (!lotId) {
+      currentComps = [];
+      isLoading = false;
+      render();
+      return;
+    }
+
+    isLoading = true;
+    currentComps = [];
     render();
-  });
-  tbody.addEventListener("click", (e) => {
-    const tr = e.target.closest("tr.click");
-    if (tr) location.href = `component-detail.html?comp=${tr.dataset.c}&lot=${tr.dataset.lot}`;
+
+    const res = await window.ASTRAGuardAPI.getLotComponents(lotId);
+    isLoading = false;
+
+    if (res.ok && Array.isArray(res.data)) {
+      currentComps = res.data;
+    } else {
+      currentComps = [];
+      loadError = res.error || "Failed to load components for lot.";
+    }
+    render();
+  }
+
+  function render() {
+    const lotId = lotsSel.value;
+    const q = qInput.value.trim().toUpperCase();
+    const dec = decSel.value;
+
+    if (!lotId) {
+      countEl.textContent = "Select a lot";
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">Select a lot to view live components.</td></tr>`;
+      return;
+    }
+
+    if (isLoading) {
+      countEl.textContent = "Loading…";
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">Loading components…</td></tr>`;
+      return;
+    }
+
+    if (loadError) {
+      countEl.textContent = "Error";
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--accent-red, #ff5555); padding: 24px; text-align: center;">${loadError}</td></tr>`;
+      return;
+    }
+
+    if (currentComps.length === 0) {
+      countEl.textContent = "0 components";
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">No components found for this lot.</td></tr>`;
+      return;
+    }
+
+    const rows = currentComps.filter((c) => {
+      const compId = (c.component_id || "").toUpperCase();
+      const compDec = (c.decision || "").toUpperCase();
+      const matchQ = !q || compId.includes(q);
+      const matchDec = !dec || compDec === dec;
+      return matchQ && matchDec;
+    });
+
+    countEl.textContent = `${rows.length} component${rows.length === 1 ? "" : "s"}`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 18px; text-align: center;">No matches for filter criteria</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.slice(0, 150).map((c) => {
+      const compId = c.component_id || "—";
+      const lot = c.lot_id || lotId;
+      const anomaly = typeof c.anomaly_score === "number" ? c.anomaly_score.toFixed(1) : (c.anomaly_score || "—");
+      const drift = typeof c.predicted_168h === "number" ? c.predicted_168h.toFixed(2) : (c.predicted_168h || "—");
+      const risk = typeof c.risk_score === "number" ? c.risk_score.toFixed(1) : (c.risk_score || "—");
+      const decision = c.decision || "—";
+      const tier = c.reliability_tier || (typeof c.risk_score === "number" ? (c.risk_score >= 65 ? "High-Risk" : c.risk_score >= 35 ? "Borderline" : "Space-Safe") : "—");
+
+      return `
+        <tr class="click" data-c="${compId}" data-lot="${lot}">
+          <td><b>${compId}</b></td>
+          <td>${lot}</td>
+          <td>${anomaly}</td>
+          <td>${drift}</td>
+          <td>${risk}</td>
+          <td>${badge(decision)}</td>
+          <td>${tier}</td>
+        </tr>`;
+    }).join("");
+
+    if (rows.length > 150) {
+      tbody.insertAdjacentHTML("beforeend",
+        `<tr><td colspan="7" style="color:var(--steel-dim); padding: 12px; text-align: center;">…and ${(rows.length - 150).toLocaleString()} more — refine the search</td></tr>`);
+    }
+  }
+
+  lotsSel.addEventListener("change", onLotChange);
+  qInput.addEventListener("input", render);
+  decSel.addEventListener("change", render);
+
+  clearBtn.addEventListener("click", () => {
+    qInput.value = "";
+    decSel.value = "";
+    lotsSel.value = "";
+    onLotChange();
   });
 
+  tbody.addEventListener("click", (e) => {
+    const tr = e.target.closest("tr.click");
+    if (tr && tr.dataset.c) {
+      location.href = `component-detail.html?comp=${encodeURIComponent(tr.dataset.c)}&lot=${encodeURIComponent(tr.dataset.lot)}`;
+    }
+  });
+
+  loadLots();
   render();
 </script>
 </body>

@@ -48,6 +48,7 @@
   </main>
 </div>
 
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
   const { data, charts, topbar, renderSidebar, COLORS } = window.SAGE;
@@ -56,7 +57,7 @@
   topbar("AI Predictions", null, null, `<span class="box-sub" style="margin:0;">models: Module A pipeline · Module B drift · reliability index</span>`);
 
   document.getElementById("kpis").innerHTML = [
-    ["Model Version", "sage-1.0"],
+    ["Model Version", "sage-1.1"],
     ["Components Scored", data.components.length.toLocaleString()],
     ["Median |Error|", "0.041 µA"],
     ["168h Coverage", "100%"],
@@ -94,15 +95,27 @@
       <span class="badge neutral">${art}</span>
     </div>`).join("");
 
-  function drawForecast(id) {
-    const c = data.compById(id.toUpperCase()) || data.topRisk(1)[0];
+  async function drawForecast(id) {
+    const cid = (id || "C104").toUpperCase();
+    const trajRes = await window.ASTRAGuardAPI.getComponentTrajectory(cid);
+    if (trajRes.ok && trajRes.data && Array.isArray(trajRes.data.actual) && trajRes.data.actual.length > 0) {
+      const liveTraj = trajRes.data;
+      const actualPts = liveTraj.actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
+      const predPts = (liveTraj.predicted || []).map((p) => ({ x: p.time, y: p.value, forecast: true }));
+      charts.lineChart(document.getElementById("fc"), [
+        { points: [...actualPts, ...predPts], color: COLORS.reject },
+      ], { height: 220, xTick: (x) => `${x}h` });
+      return;
+    }
+
+    const c = data.compById(cid) || data.topRisk(1)[0];
     const m = c.measurements;
     charts.lineChart(document.getElementById("fc"), [
       { points: m.hours.map((h, i) => ({ x: h, y: m.leakage[i], forecast: i >= m.predictedFrom })), color: COLORS.reject },
     ], { height: 220, xTick: (x) => `${x}h` });
   }
-  document.getElementById("go").addEventListener("click", () => drawForecast(document.getElementById("cid").value || "C1739"));
-  drawForecast("C1739");
+  document.getElementById("go").addEventListener("click", () => drawForecast(document.getElementById("cid").value || "C104"));
+  drawForecast("C104");
 </script>
 </body>
 </html>

@@ -463,5 +463,9 @@
     data: api, COLORS,
     renderSidebar, topbar, toast, param, dotFor, badge,
     charts: { lineChart, hbarChart, donutChart, scatterChart },
+    api: window.ASTRAGuardAPI || null,
   };
+  if (window.ASTRAGuardAPI && !window.ASTRAGuardAPI.sage) {
+    window.ASTRAGuardAPI.sage = window.SAGE;
+  }
 })();

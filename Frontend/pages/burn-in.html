@@ -55,60 +55,137 @@
   </main>
 </div>
 
+<input type="file" id="burnInCsvInput" accept=".csv" style="display:none;" />
+
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
   const { data, charts, topbar, renderSidebar, badge } = window.SAGE;
 
   renderSidebar("burn-in.html");
   topbar("Burn-In Testing", null, null, `<button class="btn" id="uploadBtn">[Upload CSV]</button>`);
-  document.getElementById("uploadBtn").addEventListener("click", () =>
-    window.SAGE.toast("CSV upload → POST /upload (Member 1's endpoint)"));
 
-  const t = data.totals();
-  document.getElementById("kpis").innerHTML = [
-    ["Total Lots", t.lots],
-    ["Components", t.comps.toLocaleString()],
-    ["Rejected", t.reject],
-    ["Model Used", "sage-1.0"],
-  ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+  const fileInput = document.getElementById("burnInCsvInput");
+  document.getElementById("uploadBtn").addEventListener("click", () => fileInput.click());
 
-  document.querySelector("#lotTable tbody").innerHTML = data.lots.map((l) => `
-    <tr class="click" data-lot="${l.lotId}">
-      <td>${l.lotId}</td><td>${l.type}</td><td>${l.size}</td>
-      <td>${l.pass}</td><td>${l.monitor}</td><td>${l.hold}</td><td>${l.reject}</td>
-      <td>${l.temp}°C</td>
-    </tr>`).join("");
-  document.querySelectorAll("#lotTable tr.click").forEach((tr) =>
-    tr.addEventListener("click", () => location.href = `lot-detail.html?lot=${tr.dataset.lot}`));
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    window.SAGE.toast(`Uploading ${file.name} to POST /api/burnin/upload...`);
+    const res = await window.ASTRAGuardAPI.uploadBurnIn(file);
+    if (res.ok && res.data) {
+      window.SAGE.toast(`Uploaded ${res.data.filename || file.name}: ${res.data.records_processed != null ? res.data.records_processed + ' records processed' : (res.data.message || 'Success')}`);
+      loadLiveData();
+    } else {
+      window.SAGE.toast(`Upload error: ${res.error || "Failed to process CSV"}`);
+    }
+    fileInput.value = "";
+  });
 
-  charts.donutChart(document.getElementById("riskPie"), [
-    { value: t.pass,    color: window.SAGE.COLORS.safe },
-    { value: t.monitor, color: window.SAGE.COLORS.monitor },
-    { value: t.hold,    color: window.SAGE.COLORS.hold },
-    { value: t.reject,  color: window.SAGE.COLORS.reject },
-  ], { height: 200, center: t.comps.toLocaleString(), centerSub: "components" });
+  async function loadLiveData() {
+    let lotsList = [];
+    let isLive = false;
 
-  document.getElementById("riskLegend").innerHTML = `
-    <span class="item"><span class="dot safe"></span> Space-Safe ${Math.round(t.pass / t.comps * 100)}%</span>
-    <span class="item"><span class="dot monitor"></span> Borderline ${Math.round((t.monitor + t.hold) / t.comps * 100)}%</span>
-    <span class="item"><span class="dot reject"></span> High-Risk ${Math.round(t.reject / t.comps * 100)}%</span>`;
+    // 1. Fetch lots from backend
+    const lotsRes = await window.ASTRAGuardAPI.getLots();
+    if (lotsRes.ok && Array.isArray(lotsRes.data) && lotsRes.data.length > 0) {
+      isLive = true;
+      // Fetch summaries in parallel
+      const summaryPromises = lotsRes.data.map(async (l) => {
+        const sum = await window.ASTRAGuardAPI.getLotSummary(l.lot_id);
+        return {
+          lotId: l.lot_id,
+          type: "Thermal-Screened",
+          size: l.total_components || (sum.ok ? sum.data.total_components : 0),
+          pass: sum.ok ? sum.data.passed : 0,
+          monitor: sum.ok ? sum.data.monitor : 0,
+          hold: sum.ok ? sum.data.hold : 0,
+          reject: sum.ok ? sum.data.reject : 0,
+          temp: 125,
+          status: l.status,
+          avgAnomaly: sum.ok ? sum.data.average_anomaly_score : 0,
+          highRisk: sum.ok ? sum.data.high_risk_components : 0,
+        };
+      });
+      lotsList = await Promise.all(summaryPromises);
+    } else {
+      lotsList = data.lots;
+    }
 
-  charts.scatterChart(document.getElementById("scatter"),
-    data.components.map((c) => ({
-      x: c.drift, y: c.anomaly,
-      color: c.decision === "PASS" ? window.SAGE.COLORS.safe
-           : c.decision === "REJECT" ? window.SAGE.COLORS.reject
-           : window.SAGE.COLORS.monitor,
-    })),
-    { height: 230, axisLabels: { x: "Drift Score", y: "Anomaly" } });
+    // 2. Compute KPI totals
+    let totalComps = 0, totalRej = 0, totalPass = 0, totalMon = 0, totalHold = 0;
+    lotsList.forEach((l) => {
+      totalComps += l.size;
+      totalPass += l.pass;
+      totalMon += l.monitor;
+      totalHold += l.hold;
+      totalRej += l.reject;
+    });
 
-  document.getElementById("alerts").innerHTML = data.topRisk(10).map((c) => `
-    <li class="click" style="cursor:pointer" data-c="${c.id}">
-      <span class="dot reject"></span>
-      <b>${c.id}</b> — Risk: ${c.risk} — ${c.decision} — ${data.reason(c)}
-    </li>`).join("");
-  document.querySelectorAll("#alerts li").forEach((li) =>
-    li.addEventListener("click", () => location.href = `component-detail.html?comp=${li.dataset.c}`));
+    document.getElementById("kpis").innerHTML = [
+      ["Total Lots", lotsList.length],
+      ["Components", totalComps.toLocaleString()],
+      ["Rejected", totalRej],
+      ["Backend Status", isLive ? "LIVE (FastAPI)" : "DEMO (Mock)"],
+    ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+
+    // 3. Render Lots Table
+    document.querySelector("#lotTable tbody").innerHTML = lotsList.map((l) => `
+      <tr class="click" data-lot="${l.lotId}">
+        <td><b>${l.lotId}</b></td><td>${l.type}</td><td>${l.size}</td>
+        <td>${l.pass}</td><td>${l.monitor}</td><td>${l.hold}</td><td>${l.reject}</td>
+        <td>${l.temp}°C</td>
+      </tr>`).join("");
+    document.querySelectorAll("#lotTable tr.click").forEach((tr) =>
+      tr.addEventListener("click", () => location.href = `lot-detail.html?lot=${encodeURIComponent(tr.dataset.lot)}`));
+
+    // 4. Render Donut Chart
+    const denom = totalComps || 1;
+    charts.donutChart(document.getElementById("riskPie"), [
+      { value: totalPass,    color: window.SAGE.COLORS.safe },
+      { value: totalMon,     color: window.SAGE.COLORS.monitor },
+      { value: totalHold,    color: window.SAGE.COLORS.hold },
+      { value: totalRej,     color: window.SAGE.COLORS.reject },
+    ], { height: 200, center: totalComps.toLocaleString(), centerSub: "components" });
+
+    document.getElementById("riskLegend").innerHTML = `
+      <span class="item"><span class="dot safe"></span> Space-Safe ${Math.round(totalPass / denom * 100)}%</span>
+      <span class="item"><span class="dot monitor"></span> Borderline ${Math.round((totalMon + totalHold) / denom * 100)}%</span>
+      <span class="item"><span class="dot reject"></span> High-Risk ${Math.round(totalRej / denom * 100)}%</span>`;
+
+    // 5. Render Scatter Chart (using mock distribution)
+    charts.scatterChart(document.getElementById("scatter"),
+      data.components.map((c) => ({
+        x: c.drift, y: c.anomaly,
+        color: c.decision === "PASS" ? window.SAGE.COLORS.safe
+             : c.decision === "REJECT" ? window.SAGE.COLORS.reject
+             : window.SAGE.COLORS.monitor,
+      })),
+      { height: 230, axisLabels: { x: "Drift Score", y: "Anomaly" } });
+
+    // 6. Render High-Risk Alerts
+    const alertsRes = await window.ASTRAGuardAPI.getAlerts();
+    const alertsListEl = document.getElementById("alerts");
+    if (alertsRes.ok && Array.isArray(alertsRes.data) && alertsRes.data.length > 0) {
+      alertsListEl.innerHTML = alertsRes.data.slice(0, 10).map((a) => `
+        <li class="click" style="cursor:pointer" data-c="${a.component_id}" data-lot="${a.lot_id}">
+          <span class="dot ${a.severity === 'CRITICAL' ? 'reject' : 'hold'}"></span>
+          <b>${a.component_id}</b> (${a.lot_id}) — Risk: <b>${a.risk_score}</b> — Severity: <b>${a.severity}</b> — Flagged for thermal screening
+        </li>`).join("");
+      alertsListEl.querySelectorAll("li.click").forEach((li) =>
+        li.addEventListener("click", () => location.href = `component-detail.html?comp=${encodeURIComponent(li.dataset.c)}&lot=${encodeURIComponent(li.dataset.lot)}`));
+    } else {
+      alertsListEl.innerHTML = data.topRisk(10).map((c) => `
+        <li class="click" style="cursor:pointer" data-c="${c.id}">
+          <span class="dot reject"></span>
+          <b>${c.id}</b> — Risk: ${c.risk} — ${c.decision} — ${data.reason(c)}
+        </li>`).join("");
+      alertsListEl.querySelectorAll("li.click").forEach((li) =>
+        li.addEventListener("click", () => location.href = `component-detail.html?comp=${li.dataset.c}`));
+    }
+  }
+
+  loadLiveData();
 </script>
 </body>
 </html>

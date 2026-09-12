@@ -172,3 +172,18 @@ def test_missing_rows_return_none(db):
     assert crud.get_component("NOPE", db=db) is None
     assert crud.get_lot_summary("NOPE", db=db) is None
     assert crud.get_component_report("NOPE", db=db) is None
+
+
+def test_get_lot_components(db):
+    _seed(db)
+    comps = crud.get_lot_components("LOT-1", db=db)
+    assert len(comps) == 2
+    assert comps[0]["component_id"] == "C101"
+    assert comps[0]["lot_id"] == "LOT-1"
+    assert comps[0]["decision"] == "PASS"
+    assert comps[1]["component_id"] == "C102"
+    assert comps[1]["lot_id"] == "LOT-1"
+    assert comps[1]["decision"] == "REJECT"
+
+    # Missing lot returns empty list
+    assert crud.get_lot_components("NOPE", db=db) == []

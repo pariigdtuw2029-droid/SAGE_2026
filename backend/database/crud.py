@@ -281,6 +281,47 @@ def get_lot_summary(lot_id: str, db: Optional[Session] = None) -> Optional[dict]
     }
 
 
+def get_lot_components(lot_id: str, db: Optional[Session] = None) -> List[dict]:
+    """All components belonging to a lot, ordered by component_id."""
+    s = _session(db)
+    comps = s.scalars(
+        select(models.Component)
+        .where(models.Component.lot_id == lot_id)
+        .order_by(models.Component.component_id)
+    ).all()
+    results = []
+    for comp in comps:
+        pred = s.scalars(
+            select(models.Prediction).where(models.Prediction.component_id == comp.component_id)
+            .order_by(models.Prediction.id.desc())
+        ).first()
+        ra = s.scalars(
+            select(models.RiskAssessment).where(models.RiskAssessment.component_id == comp.component_id)
+            .order_by(models.RiskAssessment.id.desc())
+        ).first()
+        slope_flag = None
+        rel_tier = None
+        if ra is not None:
+            slope_flag = bool(ra.slope_reject_flag) if ra.slope_reject_flag is not None else None
+            rel_tier = ra.reliability_tier
+        results.append({
+            "component_id": comp.component_id,
+            "lot_id": comp.lot_id,
+            "status": comp.status,
+            "risk_level": comp.risk_level or "UNKNOWN",
+            "anomaly_score": comp.anomaly_score,
+            "predicted_168h": pred.predicted_168h if pred else None,
+            "risk_score": comp.risk_score,
+            "decision": comp.decision,
+            "confidence": comp.confidence,
+            "slope_reject_flag": slope_flag,
+            "reliability_tier": rel_tier,
+            "reliability_index": comp.reliability_index,
+            "split": comp.split,
+        })
+    return results
+
+
 def get_component(component_id: str, db: Optional[Session] = None) -> Optional[dict]:
     """One component with its latest screening snapshot (schema: ComponentResponse)."""
     s = _session(db)

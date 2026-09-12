@@ -40,63 +40,140 @@
   </main>
 </div>
 
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
   const { data, charts, topbar, renderSidebar, param, dotFor } = window.SAGE;
 
   renderSidebar("components.html");
-  const id = param("comp") || "C1739";
-  const c = data.compById(id) || data.components[0];
+  const rawId = param("comp") || "C104";
+  const id = rawId.toUpperCase();
   const backLot = param("lot");
 
-  const fromLot = backLot && backLot === c.lotId ? backLot : c.lotId;
-  topbar(
-    `Component ${c.id}`,
-    fromLot ? `lot-detail.html?lot=${fromLot}` : "components.html",
-    fromLot ? `Back to ${fromLot}` : "Back to Database"
-  );
+  async function renderComponent() {
+    let c = null;
+    let liveTraj = null;
+    let liveReport = null;
+    let isLive = false;
 
-  const tierDot = c.tier === "Space-Safe" ? "safe" : c.tier === "High-Risk" ? "reject" : "monitor";
-  document.getElementById("statusRow").innerHTML = [
-    ["Risk Score", c.risk],
-    ["Decision", `${c.decision} · conf ${c.confidence}`],
-    ["Reliability Index", c.reliabilityIndex],
-    ["Tier", c.tier],
-    ["Lot / Type", `${c.lotId} · ${c.type}`],
-  ].map(([l, v], i) => `
-    <div class="kpi">
-      <div class="kpi-label">${l}</div>
-      <div class="kpi-value" style="font-size:20px;">${v} ${i === 0 ? `<span class="dot ${dotFor(c.decision)}"></span>` : ""}</div>
-      ${i === 3 ? `<div class="kpi-sub"><span class="dot ${tierDot}"></span> ${c.tier === "Space-Safe" ? "certified" : c.tier === "High-Risk" ? "flagged ✕" : "watch"}</div>` : ""}
-    </div>`).join("");
+    // Attempt live API fetches
+    const [compRes, trajRes, repRes] = await Promise.all([
+      window.ASTRAGuardAPI.getComponent(id),
+      window.ASTRAGuardAPI.getComponentTrajectory(id),
+      window.ASTRAGuardAPI.getComponentReport(id),
+    ]);
 
-  const m = c.measurements;
-  // Index each parameter to its 0h reading (= 100) so all three fit one axis
-  // and the drift direction/magnitude is instantly readable.
-  const idx = (vals) => vals.map((v) => Math.round((v / vals[0]) * 1000) / 10);
-  charts.lineChart(document.getElementById("driftChart"), [
-    { points: idx(m.leakage).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.reject },
-    { points: idx(m.resistance).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.sky },
-    { points: idx(m.vth).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.gold },
-  ], {
-    height: 250,
-    xTick: (x) => `${x}h`,
-  });
-  document.getElementById("driftLegend").innerHTML = `
-    <span class="item"><span class="dot reject"></span> Leakage — ${m.leakage[0]} → ${m.leakage[3]} µA</span>
-    <span class="item"><span class="dot sky" style="background:var(--sky);"></span> Resistance — ${m.resistance[0]} → ${m.resistance[3]} Ω</span>
-    <span class="item"><span class="dot hold"></span> Vth — ${m.vth[0]} → ${m.vth[3]} V</span>
-    <span class="item" style="color:var(--steel-dim);">y-axis: index, 0h = 100</span>`;
+    if (compRes.ok && compRes.data) {
+      isLive = true;
+      const d = compRes.data;
+      c = {
+        id: d.component_id,
+        lotId: d.lot_id,
+        type: d.status || "Screened",
+        risk: d.risk_score,
+        anomaly: d.anomaly_score,
+        drift: d.predicted_168h,
+        uncertainty: 28.0,
+        decision: d.decision || d.status,
+        tier: d.reliability_tier || (d.risk_score >= 65 ? "High-Risk" : d.risk_score >= 35 ? "Borderline" : "Space-Safe"),
+        reliabilityIndex: Math.round((100 - d.risk_score) * 10) / 10,
+        confidence: d.confidence,
+        slope_reject_flag: d.slope_reject_flag,
+        explanations: (repRes.ok && repRes.data && repRes.data.reasons) ? repRes.data.reasons : [],
+      };
+      liveTraj = trajRes.ok ? trajRes.data : null;
+      liveReport = repRes.ok ? repRes.data : null;
+    } else {
+      c = data.compById(id) || data.compById("C1739") || data.components[0];
+    }
 
-  charts.hbarChart(document.getElementById("riskBars"), [
-    { label: "Anomaly Score", value: c.anomaly,     color: window.SAGE.COLORS.sky },
-    { label: "Drift Score",   value: c.drift,       color: window.SAGE.COLORS.gold },
-    { label: "Uncertainty",   value: c.uncertainty, color: window.SAGE.COLORS.steel },
-    { label: "Risk Score",    value: c.risk,        color: c.risk >= 65 ? window.SAGE.COLORS.reject : c.risk >= 35 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
-  ], { height: 190 });
+    const fromLot = backLot && backLot === c.lotId ? backLot : c.lotId;
+    topbar(
+      `Component ${c.id} ${isLive ? '<span class="badge safe" style="margin-left:8px;font-size:11px;">LIVE</span>' : ''}`,
+      fromLot ? `lot-detail.html?lot=${encodeURIComponent(fromLot)}` : "components.html",
+      fromLot ? `Back to ${fromLot}` : "Back to Database"
+    );
 
-  const ul = document.getElementById("expList");
-  ul.innerHTML = c.explanations.map((e) => `<li>${e}</li>`).join("");
+    const tierDot = c.tier === "Space-Safe" ? "safe" : c.tier === "High-Risk" ? "reject" : "monitor";
+    const slopeBadge = c.slope_reject_flag ? `<span class="badge reject" style="margin-left:6px;font-size:10px;" title="Flagged by early slope-rejection safety rule">SLOPE REJECT</span>` : "";
+
+    document.getElementById("statusRow").innerHTML = [
+      ["Risk Score", `${c.risk}`],
+      ["Decision", `${c.decision} · conf ${c.confidence}`],
+      ["Reliability Index", `${c.reliabilityIndex}`],
+      ["Tier", `${c.tier}`],
+      ["Lot / Status", `${c.lotId} · ${c.type}`],
+    ].map(([l, v], i) => `
+      <div class="kpi">
+        <div class="kpi-label">${l}</div>
+        <div class="kpi-value" style="font-size:20px;">
+          ${v} ${i === 0 ? `<span class="dot ${dotFor(c.decision)}"></span>` : ""}
+          ${i === 1 ? slopeBadge : ""}
+        </div>
+        ${i === 3 ? `<div class="kpi-sub"><span class="dot ${tierDot}"></span> ${c.tier === "Space-Safe" ? "certified" : c.tier === "High-Risk" ? "flagged ✕" : "watch"}</div>` : ""}
+      </div>`).join("");
+
+    // Trajectory / parameter chart
+    if (liveTraj && Array.isArray(liveTraj.actual) && liveTraj.actual.length > 0) {
+      const actualPts = liveTraj.actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
+      const predPts = (liveTraj.predicted || []).map((p) => ({ x: p.time, y: p.value, forecast: true }));
+      const allPts = [...actualPts, ...predPts];
+
+      charts.lineChart(document.getElementById("driftChart"), [
+        { points: allPts, color: c.decision === "REJECT" ? window.SAGE.COLORS.reject : window.SAGE.COLORS.sky },
+      ], {
+        height: 250,
+        xTick: (x) => `${x}h`,
+      });
+
+      const lastActual = actualPts[actualPts.length - 1];
+      const lastPred = predPts.length ? predPts[predPts.length - 1] : null;
+      document.getElementById("driftLegend").innerHTML = `
+        <span class="item"><span class="dot ${dotFor(c.decision)}"></span> Measured (${actualPts[0].x}h: ${actualPts[0].y} → ${lastActual.x}h: ${lastActual.y} µA)</span>
+        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted 168h (${lastPred.y} µA)</span>` : ""}
+        ${liveTraj.safety_limit ? `<span class="item" style="color:var(--steel-dim);">Safety Limit: ${liveTraj.safety_limit} µA</span>` : ""}
+        <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(c.id)}/trajectory</span>`;
+    } else {
+      const m = c.measurements || (data.components[0] && data.components[0].measurements);
+      if (m) {
+        const idx = (vals) => vals.map((v) => Math.round((v / vals[0]) * 1000) / 10);
+        charts.lineChart(document.getElementById("driftChart"), [
+          { points: idx(m.leakage).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.reject },
+          { points: idx(m.resistance).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.sky },
+          { points: idx(m.vth).map((y, i) => ({ x: m.hours[i], y, forecast: i >= m.predictedFrom })), color: window.SAGE.COLORS.gold },
+        ], {
+          height: 250,
+          xTick: (x) => `${x}h`,
+        });
+        document.getElementById("driftLegend").innerHTML = `
+          <span class="item"><span class="dot reject"></span> Leakage — ${m.leakage[0]} → ${m.leakage[3]} µA</span>
+          <span class="item"><span class="dot sky" style="background:var(--sky);"></span> Resistance — ${m.resistance[0]} → ${m.resistance[3]} Ω</span>
+          <span class="item"><span class="dot hold"></span> Vth — ${m.vth[0]} → ${m.vth[3]} V</span>
+          <span class="item" style="color:var(--steel-dim);">y-axis: index, 0h = 100</span>`;
+      }
+    }
+
+    // Risk bars
+    charts.hbarChart(document.getElementById("riskBars"), [
+      { label: "Anomaly Score", value: c.anomaly,     color: window.SAGE.COLORS.sky },
+      { label: "Drift / 168h",  value: c.drift,       color: window.SAGE.COLORS.gold },
+      { label: "Uncertainty",   value: c.uncertainty, color: window.SAGE.COLORS.steel },
+      { label: "Risk Score",    value: c.risk,        color: c.risk >= 65 ? window.SAGE.COLORS.reject : c.risk >= 35 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
+    ], { height: 190 });
+
+    // Explanations list
+    const ul = document.getElementById("expList");
+    const reasons = (c.explanations && c.explanations.length > 0)
+      ? c.explanations
+      : [
+          `Leakage delta within lot envelope`,
+          `Traditional limit check passed`,
+          `Stable forecast to 168h`,
+        ];
+    ul.innerHTML = reasons.map((e) => `<li>${e}</li>`).join("");
+  }
+
+  renderComponent();
 </script>
 </body>
 </html>

@@ -18,3 +18,7 @@ backend/venv/
 # OS / tooling junk
 .DS_Store
 .freebuff/
+
+# Bundles / archives
+*.zip
+SAGE_2026_backend_complete/

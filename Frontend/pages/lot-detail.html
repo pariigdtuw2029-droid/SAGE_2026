@@ -43,58 +43,152 @@
   </main>
 </div>
 
+<script src="../api.js"></script>
 <script src="../app.js"></script>
 <script>
   const { data, charts, topbar, renderSidebar, param } = window.SAGE;
 
   renderSidebar("burn-in.html");
-  const lotId = param("lot") || "LOT-03";
-  const lot = data.lotById(lotId);
-  const comps = data.compsByLot(lotId);
+  const rawLotId = param("lot") || "LOT_27";
+  const lotId = rawLotId.toUpperCase();
 
-  topbar(`${lotId}: ${lot.type} (${lot.tempLabel})`, "burn-in.html", "Back to Lots");
+  async function renderLotDetail() {
+    let isLive = false;
+    let lotData = null;
+    let summaryData = null;
 
-  const avgRisk = (comps.reduce((a, c) => a + c.risk, 0) / comps.length).toFixed(1);
-  const highRisk = comps.filter((c) => c.risk >= 65).length;
-  document.getElementById("kpis").innerHTML = [
-    ["Temperature", `${lot.temp}°C`],
-    ["Components", lot.size],
-    ["Avg Risk", avgRisk],
-    ["High Risk", highRisk],
-  ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+    const [lotRes, sumRes, compsRes] = await Promise.all([
+      window.ASTRAGuardAPI.getLot(lotId),
+      window.ASTRAGuardAPI.getLotSummary(lotId),
+      window.ASTRAGuardAPI.getLotComponents(lotId),
+    ]);
 
-  const grid = document.getElementById("chipGrid");
-  grid.innerHTML = comps.slice(0, 120).map((c) => `
-    <div class="chip" data-c="${c.id}" title="Risk ${c.risk} · ${c.decision}">
-      <div class="chip-id">${c.id}</div>
-      <span class="dot ${window.SAGE.dotFor(c.decision)}"></span>
-    </div>`).join("");
-  if (comps.length > 120) {
-    const more = document.createElement("p");
-    more.className = "box-sub";
-    more.style.marginTop = "12px";
-    more.textContent = `+ ${comps.length - 120} more components — use the Component Database search for the full list`;
-    grid.after(more);
+    if (lotRes.ok && lotRes.data) {
+      isLive = true;
+      lotData = lotRes.data;
+      summaryData = sumRes.ok ? sumRes.data : {
+        lot_id: lotId,
+        total_components: lotData.total_components || 0,
+        passed: 0, monitor: 0, hold: 0, reject: 0,
+        average_anomaly_score: 0,
+        high_risk_components: 0,
+      };
+    }
+
+    if (isLive) {
+      topbar(`${lotId} · Status: ${lotData.status} <span class="badge safe" style="margin-left:8px;font-size:11px;">LIVE</span>`, "burn-in.html", "Back to Lots");
+
+      document.getElementById("kpis").innerHTML = [
+        ["Total Components", summaryData.total_components],
+        ["Avg Anomaly Score", summaryData.average_anomaly_score],
+        ["High Risk", summaryData.high_risk_components],
+        ["Status", lotData.status],
+      ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+
+      // Populate live components for this lot
+      const grid = document.getElementById("chipGrid");
+      const liveComps = (compsRes && compsRes.ok && Array.isArray(compsRes.data)) ? compsRes.data : [];
+
+      if (liveComps.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; padding: 18px; color: var(--steel-dim); font-size: 13px; font-family: 'IBM Plex Mono', monospace;">No components available for lot ${lotId}.</div>`;
+      } else {
+        grid.innerHTML = liveComps.map((c) => {
+          const compId = c.component_id || c.id;
+          const decision = c.decision || c.status || "UNKNOWN";
+          const risk = typeof c.risk_score === "number" ? c.risk_score : (typeof c.risk === "number" ? c.risk : 0);
+          return `
+            <div class="chip" data-c="${compId}" title="${compId} · Risk ${risk} · ${decision}">
+              <div class="chip-id">${compId}</div>
+              <span class="dot ${window.SAGE.dotFor(decision)}"></span>
+            </div>`;
+        }).join("");
+
+        grid.querySelectorAll(".chip").forEach((ch) =>
+          ch.addEventListener("click", () => location.href = `component-detail.html?comp=${encodeURIComponent(ch.dataset.c)}&lot=${encodeURIComponent(lotId)}`));
+      }
+
+      // Bucket bars
+      charts.hbarChart(document.getElementById("bucketBars"), [
+        { label: `Safe (${summaryData.passed})`,       value: summaryData.passed,    color: window.SAGE.COLORS.safe },
+        { label: `Monitor (${summaryData.monitor})`,   value: summaryData.monitor,   color: window.SAGE.COLORS.monitor },
+        { label: `Hold (${summaryData.hold})`,         value: summaryData.hold,      color: window.SAGE.COLORS.hold },
+        { label: `Reject (${summaryData.reject})`,     value: summaryData.reject,    color: window.SAGE.COLORS.reject },
+      ], { height: 180 });
+
+      // Reliability spread
+      if (liveComps.length > 0) {
+        charts.scatterChart(document.getElementById("spread"),
+          liveComps.map((c) => {
+            const risk = typeof c.risk_score === "number" ? c.risk_score : (typeof c.risk === "number" ? c.risk : 0);
+            const decision = (c.decision || c.status || "").toUpperCase();
+            return {
+              x: Math.round(100 - risk), y: risk,
+              color: decision === "PASS" ? window.SAGE.COLORS.safe
+                   : decision === "REJECT" ? window.SAGE.COLORS.reject
+                   : window.SAGE.COLORS.monitor,
+            };
+          }),
+          { height: 230, axisLabels: { x: "Reliability Index", y: "Risk" } });
+      } else {
+        const spreadCanvas = document.getElementById("spread");
+        if (spreadCanvas) {
+          const ctx = spreadCanvas.getContext("2d");
+          ctx.clearRect(0, 0, spreadCanvas.width, spreadCanvas.height);
+        }
+      }
+
+    } else {
+      // Fallback to mock dataset
+      const lot = data.lotById(lotId) || data.lots[0];
+      const comps = data.compsByLot(lot.lotId);
+
+      topbar(`${lot.lotId}: ${lot.type} (${lot.tempLabel})`, "burn-in.html", "Back to Lots");
+
+      const avgRisk = (comps.reduce((a, c) => a + c.risk, 0) / (comps.length || 1)).toFixed(1);
+      const highRisk = comps.filter((c) => c.risk >= 65).length;
+      document.getElementById("kpis").innerHTML = [
+        ["Temperature", `${lot.temp}°C`],
+        ["Components", lot.size],
+        ["Avg Risk", avgRisk],
+        ["High Risk", highRisk],
+      ].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join("");
+
+      const grid = document.getElementById("chipGrid");
+      grid.innerHTML = comps.slice(0, 120).map((c) => `
+        <div class="chip" data-c="${c.id}" title="Risk ${c.risk} · ${c.decision}">
+          <div class="chip-id">${c.id}</div>
+          <span class="dot ${window.SAGE.dotFor(c.decision)}"></span>
+        </div>`).join("");
+      if (comps.length > 120) {
+        const more = document.createElement("p");
+        more.className = "box-sub";
+        more.style.marginTop = "12px";
+        more.textContent = `+ ${comps.length - 120} more components — use the Component Database search for the full list`;
+        grid.after(more);
+      }
+      grid.querySelectorAll(".chip").forEach((ch) =>
+        ch.addEventListener("click", () => location.href = `component-detail.html?comp=${ch.dataset.c}&lot=${lot.lotId}`));
+
+      const t = { pass: lot.pass, monitor: lot.monitor, hold: lot.hold, reject: lot.reject };
+      charts.hbarChart(document.getElementById("bucketBars"), [
+        { label: `Safe (${t.pass})`,       value: t.pass,    color: window.SAGE.COLORS.safe },
+        { label: `Monitor (${t.monitor})`, value: t.monitor, color: window.SAGE.COLORS.monitor },
+        { label: `Hold (${t.hold})`,       value: t.hold,    color: window.SAGE.COLORS.hold },
+        { label: `Reject (${t.reject})`,   value: t.reject,  color: window.SAGE.COLORS.reject },
+      ], { height: 180 });
+
+      charts.scatterChart(document.getElementById("spread"),
+        comps.map((c) => ({
+          x: c.reliabilityIndex, y: c.risk,
+          color: c.tier === "Space-Safe" ? window.SAGE.COLORS.safe
+               : c.tier === "High-Risk" ? window.SAGE.COLORS.reject
+               : window.SAGE.COLORS.monitor,
+        })),
+        { height: 230, axisLabels: { x: "Reliability Index", y: "Risk" } });
+    }
   }
-  grid.querySelectorAll(".chip").forEach((ch) =>
-    ch.addEventListener("click", () => location.href = `component-detail.html?comp=${ch.dataset.c}&lot=${lotId}`));
 
-  const t = { pass: lot.pass, monitor: lot.monitor, hold: lot.hold, reject: lot.reject };
-  charts.hbarChart(document.getElementById("bucketBars"), [
-    { label: `Safe (${t.pass})`,       value: t.pass,    color: window.SAGE.COLORS.safe },
-    { label: `Monitor (${t.monitor})`, value: t.monitor, color: window.SAGE.COLORS.monitor },
-    { label: `Hold (${t.hold})`,       value: t.hold,    color: window.SAGE.COLORS.hold },
-    { label: `Reject (${t.reject})`,   value: t.reject,  color: window.SAGE.COLORS.reject },
-  ], { height: 180 });
-
-  charts.scatterChart(document.getElementById("spread"),
-    comps.map((c) => ({
-      x: c.reliabilityIndex, y: c.risk,
-      color: c.tier === "Space-Safe" ? window.SAGE.COLORS.safe
-           : c.tier === "High-Risk" ? window.SAGE.COLORS.reject
-           : window.SAGE.COLORS.monitor,
-    })),
-    { height: 230, axisLabels: { x: "Reliability Index", y: "Risk" } });
+  renderLotDetail();
 </script>
 </body>
 </html>
