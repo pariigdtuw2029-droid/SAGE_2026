@@ -1,5 +1,5 @@
 """
-Compatibility shim for `models/pipeline.joblib` (Module A).
+Compatibility shim for `models/anomaly_pipeline.joblib` (Module A).
 
 The anomaly-detection pipeline was trained inside `notebooks/anomaly_detection.ipynb`
 and pickled from the notebook's `__main__` namespace. Python pickle stores classes
@@ -7,8 +7,17 @@ and pickled from the notebook's `__main__` namespace. Python pickle stores class
 under `__main__` at load time.
 
 This module reproduces those class definitions verbatim from the notebook (same
-names, same field names, same math) and `ml_inference.register_notebook_classes()`
+names, same attributes, same math) and `ml_inference._register_notebook_classes()`
 publishes them on `__main__` just before `joblib.load()`.
+
+Mirrored against the current notebook revision (batch-grouped train/val/test split,
+per-group SHAP backgrounds, tuned thresholds inside the fitted `PipelineConfig`):
+
+  • ``AnomalyPipeline`` now exposes ``fit()`` and carries **no** ``_fitted`` flag —
+    unpickling bypasses ``__init__``, so a stale guard here would raise
+    ``AttributeError`` on every load. Keep this file in lock-step with the notebook.
+  • ``MultivariateAnomalyScorer`` gained ``background_`` (per-group sample kept for
+    SHAP) and ``shap_top_features()``, alongside ``fit()``.
 
 Nothing here trains anything — the fitted state comes from the artifact. If the
 notebook is retrained, re-dump it and keep this file in sync.
@@ -114,19 +123,15 @@ class LotMedianImputer:
         self.columns = config.early_value_cols()
         self.group_medians_: Dict[str, dict] = {}
         self.global_medians_: Dict[str, float] = {}
-        self._fitted = False
 
     def fit(self, df: pd.DataFrame) -> "LotMedianImputer":
         lot_col = self.config.lot_col
         for col in self.columns:
             self.group_medians_[col] = df.groupby(lot_col)[col].median().to_dict()
             self.global_medians_[col] = float(df[col].median())
-        self._fitted = True
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        if not self._fitted:
-            raise RuntimeError("LotMedianImputer must be fit before transform")
         df = df.copy()
         lot_col = self.config.lot_col
         for col in self.columns:
@@ -172,19 +177,15 @@ class LotRelativeScorer:
         self.columns = config.lot_relative_cols()
         self.group_stats_: Dict[str, Dict] = {}
         self.global_stats_: Dict[str, Tuple[float, float]] = {}
-        self._fitted = False
 
     def fit(self, df: pd.DataFrame) -> "LotRelativeScorer":
         lot_col = self.config.lot_col
         for col in self.columns:
             self.group_stats_[col] = df.groupby(lot_col)[col].apply(_robust_median_mad).to_dict()
             self.global_stats_[col] = _robust_median_mad(df[col])
-        self._fitted = True
         return self
 
     def transform(self, df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
-        if not self._fitted:
-            raise RuntimeError("LotRelativeScorer must be fit before transform")
         lot_col = self.config.lot_col
         abs_z_frame = pd.DataFrame(index=df.index)
         for col in self.columns:
@@ -208,7 +209,9 @@ class MultivariateAnomalyScorer:
         self.feature_cols = config.multivariate_feature_cols()
         self.models_: Dict[str, Pipeline] = {}
         self.score_bounds_: Dict[str, Tuple[float, float]] = {}
-        self._fitted = False
+        # Per-group background sample kept at fit time so SHAP can be computed
+        # later without re-reading the training frame.
+        self.background_: Dict[str, pd.DataFrame] = {}
 
     def _fit_one(self, X: np.ndarray):
         pipeline = Pipeline([
@@ -224,9 +227,28 @@ class MultivariateAnomalyScorer:
         p1, p99 = np.percentile(raw, [1, 99])
         return pipeline, (float(p1), float(p99))
 
+    def fit(self, df: pd.DataFrame) -> "MultivariateAnomalyScorer":
+        group_col = self.config.group_col
+        n_bg = min(100, len(df))
+        model, bounds = self._fit_one(df[self.feature_cols].values)
+        self.models_[GLOBAL_KEY] = model
+        self.score_bounds_[GLOBAL_KEY] = bounds
+        self.background_[GLOBAL_KEY] = df[self.feature_cols].sample(
+            n_bg, random_state=self.config.random_state
+        )
+        for group_value, group_df in df.groupby(group_col):
+            if len(group_df) < self.config.iforest_min_group_size:
+                print(f"WARNING: group '{group_value}' has only {len(group_df)} rows; using global fallback")
+                continue
+            model, bounds = self._fit_one(group_df[self.feature_cols].values)
+            self.models_[str(group_value)] = model
+            self.score_bounds_[str(group_value)] = bounds
+            self.background_[str(group_value)] = group_df[self.feature_cols].sample(
+                min(100, len(group_df)), random_state=self.config.random_state
+            )
+        return self
+
     def transform(self, df: pd.DataFrame) -> pd.Series:
-        if not self._fitted:
-            raise RuntimeError("MultivariateAnomalyScorer must be fit before transform")
         group_col = self.config.group_col
         scores = pd.Series(index=df.index, dtype=float)
         for group_value, group_df in df.groupby(group_col):
@@ -239,6 +261,30 @@ class MultivariateAnomalyScorer:
             scores.loc[group_df.index] = norm
         return scores
 
+    def shap_top_features(self, df: pd.DataFrame, top_k: int = 3) -> pd.Series:
+        """
+        Top-|SHAP| multivariate features per component for the rows in `df`.
+        Requires the optional `shap` dependency (training/explainability only).
+        """
+        import shap  # noqa: PLC0415 — optional dependency
+
+        group_col = self.config.group_col
+        out = pd.Series(index=df.index, dtype=object)
+        for group_value, group_df in df.groupby(group_col):
+            key = str(group_value) if str(group_value) in self.models_ else GLOBAL_KEY
+            model = self.models_[key]
+            background = self.background_[key]
+            score_fn = lambda X, _m=model: -_m.decision_function(X)  # noqa: E731
+            explainer = shap.Explainer(score_fn, background.values, feature_names=self.feature_cols)
+            sv = explainer(group_df[self.feature_cols].values)
+            for i, idx in enumerate(group_df.index):
+                vals = np.asarray(sv.values[i]).reshape(-1)
+                order = np.argsort(-np.abs(vals))[:top_k]
+                out.loc[idx] = ", ".join(
+                    f"{self.feature_cols[j]}({vals[j]:+.2f})" for j in order
+                )
+        return out
+
 
 class DriftSeverityScorer:
     def __init__(self, config: PipelineConfig):
@@ -249,10 +295,16 @@ class DriftSeverityScorer:
         cols = [self.config.pct_change_col(p) for p in self.config.params]
         return df[cols].abs().max(axis=1)
 
+    def fit(self, df: pd.DataFrame) -> "DriftSeverityScorer":
+        bound = float(self._severity(df).quantile(0.99))
+        self.bound_ = bound if bound > 0 else 1e-6
+        return self
+
     def transform(self, df: pd.DataFrame) -> pd.Series:
-        if self.bound_ is None:
+        bound = getattr(self, "bound_", None)
+        if bound is None:
             raise RuntimeError("DriftSeverityScorer must be fit before transform")
-        return (self._severity(df).clip(upper=self.bound_) / self.bound_) * 100
+        return (self._severity(df).clip(upper=bound) / bound) * 100
 
 
 def decide(risk_score: pd.Series, config: PipelineConfig) -> pd.Series:
@@ -282,13 +334,20 @@ class AnomalyPipeline:
         self.mv_scorer = MultivariateAnomalyScorer(self.config)
         self.drift_scorer = DriftSeverityScorer(self.config)
         self.absolute_layer = AbsoluteSpecLayer(self.config)
-        self._fitted = False
-        self._n_training_rows = None
-        self._fitted_at = None
+
+    def fit(self, df: pd.DataFrame) -> "AnomalyPipeline":
+        """Fit every layer on the training split (mirrors the notebook)."""
+        validate_schema(df, self.config)
+        df = self.imputer.fit_transform(df)
+        df = add_drift_features(df, self.config)
+        self.lot_scorer.fit(df)
+        self.mv_scorer.fit(df)
+        self.drift_scorer.fit(df)
+        return self
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
-        if not self._fitted:
-            raise RuntimeError("Pipeline must be fit (or loaded) before predict()")
+        # NOTE: no fitted-state guard here on purpose — the notebook class has none,
+        # and unpickling bypasses __init__ so any flag would be absent on load.
         validate_schema(df, self.config)
         original_index = df.index
 

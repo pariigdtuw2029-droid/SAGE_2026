@@ -1,0 +1,58 @@
+{
+  "stack_version": "sage-1.1",
+  "description": "Runtime constants for the Member 2 inference stack. Module A's layer weights and PASS/MONITOR/HOLD/REJECT thresholds are NOT here — they live inside the fitted PipelineConfig in anomaly_pipeline.joblib. This file holds what the notebooks tune outside an artifact.",
+  "artifacts": {
+    "module_a": "anomaly_pipeline.joblib",
+    "module_a_legacy": "pipeline.joblib",
+    "module_a_shap_bundle": "anomaly_shap_bundle.joblib",
+    "module_b": "drift_prediction_models.joblib",
+    "module_b_legacy": "drift_prediction_model.joblib"
+  },
+  "module_a": {
+    "training_split": "component_split.csv -> split == train (batch-grouped, no lot crosses train/val/test)",
+    "explanation": "multivariate layer = one IsolationForest per Part_Type plus a global fallback when a group has < 30 rows",
+    "shap_source": "anomaly_shap_bundle.joblib (portable plain dict: per-group IsolationForests, background samples, imputation medians)"
+  },
+  "module_b": {
+    "targets": ["Leakage_168h", "Resistance_168h", "Vth_168h"],
+    "models": "tuned RandomForest + MultiOutput GradientBoosting fused by a Ridge meta-learner, with GradientBoosting quantile regressors (alpha 0.05 / 0.95) for the interval",
+    "quantile_crossing": "lower/upper swapped where the intervals crossed before reconstruction",
+    "safety_slope_source": "99th percentile of |drift rate| (units/hour) measured on Safe TRAIN rows only; used for the early-rejection flag"
+  },
+  "module_c": {
+    "weight_anomaly": 0.278,
+    "weight_predicted_drift": 0.67,
+    "weight_uncertainty": 0.052,
+    "absolute_fail_risk_floor": 65.0,
+    "slope_reject_risk_floor": 65.0,
+    "risk_safe_max": 21.8,
+    "risk_borderline_max": 65.0,
+    "uncertainty_aleatoric_weight": 0.6,
+    "uncertainty_epistemic_weight": 0.4,
+    "uncertainty_ratio_cap": 1.5,
+    "target_recall_val": 0.98,
+    "tuning_note": "Weights found by a 500-draw Dirichlet search on the val split targeting >= 98% recall on val Fail cases; risk_safe_max = min(80th pct of val Safe scores, borderline cut - 0.1); risk_borderline_max = max(95th pct of val Safe scores, 98%-recall threshold). Retune in reliability_index.ipynb and update this block - no code change needed.",
+    "achieved": {
+      "val_recall_fail": 0.981,
+      "val_false_alarm_safe": 0.275,
+      "val_auc": 0.9091,
+      "test_recall_fail_borderline_plus": 0.974,
+      "test_recall_fail_high_risk_only": 0.775,
+      "test_false_alarm_safe": 0.367
+    }
+  },
+  "explainability": {
+    "enabled": false,
+    "max_rows": 50,
+    "top_k": 2,
+    "tuning_note": "SHAP is off by default because the anomaly explainer is a PermutationExplainer (~1.3 s/row). Flip `enabled` to true, or run `python -m database ingest <csv> --explain 50`, to attribute flagged components only."
+  },
+  "dataset": {
+    "rows": 10000,
+    "lots": 20,
+    "part_types": ["MOSFET", "Op-Amp IC", "Voltage Regulator IC", "Digital Logic IC"],
+    "proxy_stresses": ["Thermal-High", "Radiation-Low", "Cycling-Medium"],
+    "splits": {"train": 6522, "val": 1861, "test": 1617},
+    "labels": {"Safe": 6477, "Borderline": 1839, "Fail": 1684}
+  }
+}

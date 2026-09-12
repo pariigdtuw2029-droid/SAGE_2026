@@ -301,6 +301,8 @@ def get_component(component_id: str, db: Optional[Session] = None) -> Optional[d
         "risk_score": comp.risk_score,
         "decision": comp.decision,
         "confidence": comp.confidence,
+        "reliability_index": comp.reliability_index,
+        "split": comp.split,
     }
 
 
@@ -367,10 +369,13 @@ def get_component_risk(component_id: str, db: Optional[Session] = None) -> Optio
         "confidence": ra.confidence,
         "predicted_drift_score": ra.predicted_drift_score,
         "reliability_index": ra.reliability_index,
+        "reliability_tier": ra.reliability_tier,
         "lot_relative_score": ra.lot_relative_score,
         "multivariate_score": ra.multivariate_score,
         "worst_lot_zscore": ra.worst_lot_zscore,
         "absolute_spec_fail": ra.absolute_spec_fail,
+        "slope_reject_flag": ra.slope_reject_flag,
+        "shap_top_features": ra.shap_top_features,
         "model_version": ra.model_version,
     }
 
@@ -527,6 +532,10 @@ def get_component_report(component_id: str, db: Optional[Session] = None) -> Opt
         "reasons": reasons,
         "model_version": pred["model_version"] if pred else None,
         # Extended detail (Member 2's "complete report data").
+        "reliability_index": comp.reliability_index,
+        "reliability_tier": (risk or {}).get("reliability_tier"),
+        "slope_reject_flag": (risk or {}).get("slope_reject_flag"),
+        "split": comp.split,
         "component_type": comp.component_type,
         "status": comp.status,
         "traditional_result": comp.traditional_result,

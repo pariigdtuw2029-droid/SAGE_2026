@@ -261,6 +261,12 @@ def build_components_df(df: pd.DataFrame) -> pd.DataFrame:
         "traditional_result": df.get("Traditional_Test_Result", pd.Series(None, index=df.index)).astype(str).str.strip(),
         "label": df.get("Label", pd.Series(None, index=df.index)).astype(str).str.strip(),
     })
+    # train/val/test role, when the frame has been enriched with the notebook's
+    # batch-grouped component split (see ingestion._load_component_split).
+    if "split" in df.columns:
+        split = df["split"].astype("string").str.strip()
+        split = split.where(split.notna() & (split != ""), None)
+        comps["split"] = split.astype(object).values
     return comps
 
 

@@ -14,12 +14,17 @@ Mapping from the SAGE burn-in domain to the spec's tables:
                         temperature (Proxy_Stress "Thermal-High" → bake °C level).
 - ``components``      : one row per Component_ID; ``status`` = traditional result,
                         ``component_type`` = Part_Type; risk_level mirrors tier.
+                        ``split`` is the batch-grouped train/val/test role the
+                        anomaly notebook assigned the component's lot.
 - ``measurements``    : long format — one row per (component, timestamp, parameter)
                         for Leakage (µA), Resistance (Ω), Vth (V).
 - ``predictions``     : Module B drift-forecast output (predicted_168h / actual_168h
-                        / prediction_error per parameter).
+                        / prediction_error per parameter). interval_low/interval_high
+                        are the quantile-0.05/0.95 forecast bounds in physical units
+                        (the *width* stays available via interval_high - interval_low).
 - ``risk_assessments``: fused risk from Modules A + B (anomaly, drift, risk scores,
-                        decision, confidence).
+                        decision, confidence) plus the v5.1 safety-slope flag, the
+                        reliability tier, and the SHAP top features when computed.
 - ``explanations``    : per-feature contribution rows backing the report reasons.
 """
 
@@ -79,6 +84,9 @@ class Component(Base):
     reliability_index: Mapped[float | None] = mapped_column(Float, nullable=True)
     traditional_result: Mapped[str | None] = mapped_column(String(16), nullable=True)
     label: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # train / val / test — assigned per lot by the anomaly notebook's batch-grouped
+    # split, so no lot (and therefore no batch effect) crosses the boundary.
+    split: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     lot: Mapped["Lot"] = relationship(back_populates="components")
@@ -152,10 +160,16 @@ class RiskAssessment(Base):
     confidence: Mapped[float] = mapped_column(Float)
     predicted_drift_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     reliability_index: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reliability_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
     lot_relative_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     multivariate_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     worst_lot_zscore: Mapped[float | None] = mapped_column(Float, nullable=True)
     absolute_spec_fail: Mapped[int] = mapped_column(Integer, default=0)
+    # v5.1 safety-slope early rejection: the predicted 168h drift rate exceeded the
+    # threshold measured on Safe TRAIN rows, so the risk score is floored at 65.
+    slope_reject_flag: Mapped[int] = mapped_column(Integer, default=0)
+    # Top-|SHAP| anomaly features, "feat(+0.12), feat2(-0.03)" (NULL when not computed).
+    shap_top_features: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

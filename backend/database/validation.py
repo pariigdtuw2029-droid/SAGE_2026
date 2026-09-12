@@ -31,7 +31,9 @@ REQUIRED_COLUMNS: List[str] = [
     "Traditional_Test_Result", "Label",
 ]
 
-OPTIONAL_COLUMNS: List[str] = ["Sensor_ID", "Operator", "Notes"]
+# Recognised-but-optional columns: the notebook's batch-grouped train/val/test
+# role for a component, plus the free-form provenance fields.
+OPTIONAL_COLUMNS: List[str] = ["Sensor_ID", "Operator", "Notes", "split"]
 
 # Physically plausible ranges (same bounds as the dataset generator).
 PLAUSIBLE_RANGES: Dict[str, tuple] = {

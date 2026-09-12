@@ -82,6 +82,47 @@ def test_ingest_small_slice(db):
         assert a["risk_score"] >= 50
 
 
+def test_ingest_persists_v51_model_outputs(db):
+    """Reliability tier, safety-slope flag, forecast bounds and the split survive ingestion."""
+    if not os.path.exists(DATA_CSV):
+        pytest.skip("burn_in_dataset.csv not present")
+    df = pd.read_csv(DATA_CSV).head(60)
+    result = ingestion.ingest_dataframe(df, db=db, filename="burn_in_dataset.csv")
+    assert result.ok
+
+    cid = _all_components(db)[0]
+    risk = crud.get_component_risk(cid, db=db)
+    assert risk["reliability_tier"] in {"Space-Safe", "Borderline", "High-Risk"}
+    assert 0.0 <= risk["reliability_index"] <= 100.0
+    assert risk["slope_reject_flag"] in (0, 1)
+    # The scenario columns the explanations are built from.
+    assert risk["worst_lot_zscore"] is not None
+
+    pred = crud.get_component_prediction(cid, db=db)
+    assert pred["predicted_168h"] is not None
+    if pred["interval_low"] is not None and pred["interval_high"] is not None:
+        # v5.1 stores real quantile bounds (crossing already corrected upstream).
+        assert pred["interval_high"] >= pred["interval_low"]
+        assert pred["interval_high"] - pred["interval_low"] >= 0
+
+    # The notebook's batch-grouped split is carried onto the component when the
+    # artifact CSV is available (it is optional, never required).
+    if ingestion._component_split_map():
+        assert crud.get_component(cid, db=db)["split"] in {"train", "val", "test"}
+        assert result.splits
+
+
+def test_explanations_cover_every_component(db):
+    if not os.path.exists(DATA_CSV):
+        pytest.skip("burn_in_dataset.csv not present")
+    df = pd.read_csv(DATA_CSV).head(20)
+    result = ingestion.ingest_dataframe(df, db=db)
+    assert result.explanations_created >= result.components_created
+    report = crud.get_component_report(_all_components(db)[0], db=db)
+    assert report["reasons"]
+    assert all(isinstance(r, str) and r for r in report["reasons"])
+
+
 def test_reingest_is_idempotent(db):
     if not os.path.exists(DATA_CSV):
         pytest.skip("burn_in_dataset.csv not present")

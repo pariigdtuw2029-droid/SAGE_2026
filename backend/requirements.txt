@@ -20,6 +20,15 @@ uvicorn==0.52.4
 sqlalchemy>=2.0
 psycopg[binary]>=3.2      # PostgreSQL driver (psycopg3)
 pandas>=2.0
-scikit-learn>=1.5         # loads the pickled Module A / Module B artifacts
+# The Module A/B artifacts were pickled with scikit-learn 1.6.1. Newer minors
+# load them but emit InconsistentVersionWarning, and the documented risk is a
+# silent behaviour change — so keep the runtime on the minor the models were
+# built with, and bump it deliberately (re-dump + re-verify) rather than implicitly.
+scikit-learn>=1.6,<1.7
 joblib>=1.3
 python-dotenv==1.0.1
+
+# --- Member 2: optional model explainability ---
+# Only needed for `python -m database ingest <csv> --explain N` (SHAP).
+# The ingestion path runs without it and skips the attribution pass.
+shap>=0.44
