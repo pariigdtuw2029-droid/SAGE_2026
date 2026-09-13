@@ -46,7 +46,7 @@
 
       <section class="box">
         <h2 class="box-title">Parameter Drift Chart</h2>
-        <p class="box-sub">Solid = measured checkpoints (0h, 24h, 96h, 168h) · ringed = forecast trajectory</p>
+        <p class="box-sub">Leakage current (µA) · Solid = measured checkpoints (0h, 24h, 96h, 168h) · Ringed = forecast trajectory</p>
         <canvas class="chart" id="driftChart"></canvas>
         <div class="legend" id="driftLegend"></div>
       </section>
@@ -229,8 +229,8 @@
       ["Risk Score", fmt(c.risk_score), `<span class="dot ${dotFor(c.decision)}"></span>`, `level: ${escapeHtml(c.risk_level)}`],
       ["Decision", escapeHtml(c.decision), c.slope_reject_flag ? `<span class="badge reject" style="font-size:9px;">SLOPE</span>` : "", `conf: ${fmtPct(c.confidence)}`],
       ["Anomaly Score", fmt(c.anomaly_score), "", "isolation metric"],
-      ["Current Drift", fmt(c.drift_score), "", "measured parameter drift"],
-      ["Predicted @168h", fmt(c.predicted_168h, 3), "", "168h end-of-test value"],
+      ["Current Drift — Tracked Parameter", fmt(c.drift_score), "", "measured parameter drift"],
+      ["Predicted @168h — Vth", fmt(c.predicted_168h, 3), "", "168h Vth prediction"],
       ["Reliability Index", fmt(c.reliability_index), `<span class="dot ${tierDot}"></span>`, `tier: ${escapeHtml(c.reliability_tier)}`],
       ["Forecast Uncertainty", fmt(c.uncertainty_score), "", "conformal interval width"],
     ];
@@ -329,8 +329,8 @@
       const lastPred = predPts.length ? predPts[predPts.length - 1] : null;
       document.getElementById("driftLegend").innerHTML = `
         <span class="item"><span class="dot ${dotFor(c.decision)}"></span> Measured (${actualPts[0].x}h: ${actualPts[0].y} → ${lastActual.x}h: ${lastActual.y} µA)</span>
-        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted 168h (${fmt(lastPred.y, 3)} µA)</span>` : ""}
-        ${liveTraj.safety_limit ? `<span class="item" style="color:var(--steel-dim);">Safety Limit: ${liveTraj.safety_limit} µA</span>` : ""}
+        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted Leakage @168h (${fmt(lastPred.y, 3)} µA)</span>` : ""}
+        ${liveTraj.safety_limit ? `<span class="item" style="color:var(--steel-dim);">Leakage Safety Limit: ${liveTraj.safety_limit} µA</span>` : ""}
         <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(c.id)}/trajectory</span>`;
     } else {
       document.getElementById("driftChart").style.display = "none";

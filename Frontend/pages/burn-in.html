@@ -31,8 +31,8 @@
       <section class="box">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
           <div>
-            <h2 class="box-title">Burn-In Screening Trajectory &amp; Specification Envelope</h2>
-            <p class="box-sub">Actual measured checkpoints (0h, 24h, 96h, 168h) vs ML degradation forecast and datasheet safety limit</p>
+            <h2 class="box-title">Leakage Current Trajectory &amp; Specification Envelope</h2>
+            <p class="box-sub">Leakage current (µA) · Actual measured checkpoints (0h, 24h, 96h, 168h) vs ML degradation forecast and datasheet safety limit</p>
           </div>
           <span class="badge safe" style="font-size:10px;">CHAMBER SCREENING ACTIVE</span>
         </div>
@@ -57,7 +57,7 @@
                 <th>Telemetry Type</th>
                 <th>Measured Value</th>
                 <th>Predicted Value</th>
-                <th>Safety Limit</th>
+                <th>Leakage Safety Limit</th>
                 <th>Headroom / Margin</th>
                 <th>Screening Status</th>
               </tr>
@@ -494,12 +494,12 @@
         <div class="kpi-sub">${latestSub}</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Predicted @168h</div>
+        <div class="kpi-label">Predicted Vth @168h</div>
         <div class="kpi-value" style="color:var(--gold);">${pred168 != null ? `${fmt(pred168, 3)} µA` : '—'}</div>
         <div class="kpi-sub">ML degradation forecast</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Datasheet Safety Limit</div>
+        <div class="kpi-label">Leakage Safety Limit</div>
         <div class="kpi-value" style="color:${safetyLimit != null ? 'var(--reject)' : 'var(--steel)'};">${safetyLimit != null ? `${fmt(safetyLimit, 3)} µA` : '—'}</div>
         <div class="kpi-sub">${marginStr}</div>
       </div>
@@ -573,9 +573,9 @@
       const lastPred = predicted.length ? predicted[predicted.length - 1] : null;
 
       document.getElementById("trajLegend").innerHTML = `
-        <span class="item"><span class="dot ${dotFor(decision)}"></span> Measured Telemetry (0h: ${fmt(firstAct.value, 3)} → ${lastAct.time}h: ${fmt(lastAct.value, 3)} µA)</span>
-        ${lastPred ? `<span class="item"><span class="dot hold"></span> ML Forecast (168h: ${fmt(lastPred.value, 3)} µA)</span>` : ""}
-        ${safetyLimit != null ? `<span class="item" style="color:var(--reject);">Datasheet Safety Limit: ${fmt(safetyLimit, 3)} µA</span>` : ""}
+        <span class="item"><span class="dot ${dotFor(decision)}"></span> Leakage: Measured Telemetry (0h: ${fmt(firstAct.value, 3)} → ${lastAct.time}h: ${fmt(lastAct.value, 3)} µA)</span>
+        ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted Leakage @168h (${fmt(lastPred.value, 3)} µA)</span>` : ""}
+        ${safetyLimit != null ? `<span class="item" style="color:var(--reject);">Leakage Safety Limit: ${fmt(safetyLimit, 3)} µA</span>` : ""}
         <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(cid)}/trajectory</span>
       `;
     } else {
