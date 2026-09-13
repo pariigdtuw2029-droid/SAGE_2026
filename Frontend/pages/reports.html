@@ -116,7 +116,7 @@
       ]);
     } catch (err) {
       const errText = [
-        "ASTRA-GUARD INSPECTION REPORT — ERROR",
+        "SAGE INSPECTION REPORT — ERROR",
         "=".repeat(60),
         "STATUS: BACKEND CONNECTION FAILED",
         "",
@@ -132,7 +132,7 @@
     if (!res.ok) {
       if (res.status === 404) {
         const notFoundText = [
-          "ASTRA-GUARD INSPECTION REPORT — ERROR",
+          "SAGE INSPECTION REPORT — ERROR",
           "=".repeat(60),
           "STATUS: 404 NOT FOUND",
           "",
@@ -150,7 +150,7 @@
         toast(`Component ${cid} not found`);
       } else {
         const errText = [
-          "ASTRA-GUARD INSPECTION REPORT — ERROR",
+          "SAGE INSPECTION REPORT — ERROR",
           "=".repeat(60),
           `STATUS: HTTP ${res.status}`,
           "",
@@ -227,12 +227,12 @@
 
     const text = [
       "====================================================================",
-      "ASTRA-GUARD COMPONENT SCREENING & QUALIFICATION REPORT",
+      "SAGE COMPONENT SCREENING & QUALIFICATION REPORT",
       "====================================================================",
       `Report ID          : RPT-${r.component_id}-${Date.now().toString(36).toUpperCase()}`,
       `Timestamp          : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
       `Facility           : Semi-Conductor Laboratory (SCL), ISRO`,
-      `Inspection System  : ASTRA-GUARD ML Inference Core (${modelVer})`,
+      `Inspection System  : SAGE ML Inference Core (${modelVer})`,
       "",
       "1. COMPONENT IDENTIFICATION",
       "-".repeat(68),
@@ -335,7 +335,7 @@
 
     if (!res.ok) {
       const errText = [
-        "ASTRA-GUARD LOT INSPECTION REPORT — ERROR",
+        "SAGE LOT INSPECTION REPORT — ERROR",
         "=".repeat(60),
         `STATUS: ${res.status === 404 ? '404 NOT FOUND' : 'ERROR'}`,
         "",
@@ -352,7 +352,7 @@
     const s = res.data;
     const text = [
       "====================================================================",
-      "ASTRA-GUARD LOT QUALIFICATION SUMMARY REPORT",
+      "SAGE LOT QUALIFICATION SUMMARY REPORT",
       "====================================================================",
       `Lot Identifier     : ${s.lot_id}`,
       `Generated At       : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
@@ -405,7 +405,7 @@
     if (alerts.length === 0) {
       text = [
         "====================================================================",
-        "ASTRA-GUARD HIGH-RISK ALERT DIGEST",
+        "SAGE HIGH-RISK ALERT DIGEST",
         "====================================================================",
         `Timestamp          : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
         "",
@@ -416,7 +416,7 @@
     } else {
       text = [
         "====================================================================",
-        "ASTRA-GUARD HIGH-RISK ALERT DIGEST",
+        "SAGE HIGH-RISK ALERT DIGEST",
         "====================================================================",
         `Timestamp          : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
         `Active Alerts      : ${alerts.length} components requiring review`,
@@ -490,3 +490,4 @@
 </script>
 </body>
 </html>
+

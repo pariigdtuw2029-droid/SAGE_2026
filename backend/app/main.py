@@ -18,14 +18,14 @@ logger = logging.getLogger("astra_guard")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("ASTRA-GUARD API startup complete (v1.0.0)")
+    logger.info("SAGE API startup complete (v1.0.0)")
     yield
-    logger.info("ASTRA-GUARD API shutdown complete")
+    logger.info("SAGE API shutdown complete")
 
 
 app = FastAPI(
-    title="ASTRA-GUARD API",
-    description="Backend API for the ASTRA-GUARD anomaly detection system",
+    title="SAGE API",
+    description="Backend API for the SAGE anomaly detection system",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -54,7 +54,7 @@ app.add_middleware(
 @app.get("/", tags=["Health"])
 def root():
     return {
-        "message": "ASTRA-GUARD API is running"
+        "message": "SAGE API is running"
     }
 
 
