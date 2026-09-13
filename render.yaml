@@ -11,7 +11,10 @@ services:
     runtime: python
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # Install deps, then bake the bundled burn-in dataset into the image so
+    # the deployed app serves real ML data (not the mock fallback).
+    # Ingestion is idempotent; takes ~1-3 min on the free tier.
+    buildCommand: pip install -r requirements.txt && python -m database ingest data/burn_in_dataset.csv --init
     # $PORT is injected by Render; the frontend folder sits one level up
     # (repo root), which app/main.py auto-detects.
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -19,8 +22,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.6
-      # Keep the SQLite DB on a persistent disk so data survives redeploys.
-      # Free plans don't support disks — without this the DB resets on each
-      # deploy (fine for a demo since services fall back to demo data).
+      # SQLite lives inside the build image. Because the ingest runs at build
+      # time, the populated DB ships with each deploy (free plan has no
+      # persistent disk: user CSV uploads are ephemeral, the baked dataset is not).
       - key: DATABASE_URL
         value: sqlite:////opt/render/project/src/backend/astra_guard.db
