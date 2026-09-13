@@ -23,6 +23,13 @@
       if (stored && stored.trim()) return stored.trim().replace(/\/+$/, "");
     } catch (_) {}
     if (global.__API_BASE_URL__) return String(global.__API_BASE_URL__).replace(/\/+$/, "");
+    // When the page itself is served from a public host (Render, etc.), the
+    // API lives on the same origin — no cross-origin config needed. The
+    // hardcoded localhost default only applies when opening files locally.
+    if (typeof location !== "undefined" && location.hostname
+        && !/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|.+\.local)$/.test(location.hostname)) {
+      return "";
+    }
     return "http://127.0.0.1:8000";
   }
 

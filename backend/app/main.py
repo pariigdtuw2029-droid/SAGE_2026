@@ -1,11 +1,13 @@
 import logging
 import os
+from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.upload import router as upload_router
 from app.api.health import router as health_router
@@ -39,8 +41,10 @@ app = FastAPI(
 # credentials are left off since no cookie/session auth exists yet.
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080"
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,"
+    "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080",
 ).split(",")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,6 +76,40 @@ app.include_router(components_router)
 
 # Alerts route
 app.include_router(alerts_router)
+
+
+# --- Serve the Frontend from the same app (one public URL) ---
+# The frontend folder is a sibling of backend/ inside the repo; on Render it
+# lands at /opt/render/project/src/Frontend. Override with FRONTEND_DIR.
+FRONTEND_DIR = Path(
+    os.getenv(
+        "FRONTEND_DIR",
+        Path(__file__).resolve().parent.parent.parent / "Frontend",
+    )
+)
+
+
+@app.get("/app", include_in_schema=False)
+def frontend_app():
+    """Shareable dashboard link (serves the same file as /index.html).
+
+    Registered before the static mount below so it wins route matching.
+    """
+    index = FRONTEND_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="Frontend not deployed")
+
+
+if (FRONTEND_DIR / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    logger.info("Serving frontend from: %s", FRONTEND_DIR)
+else:
+    logger.warning(
+        "Frontend not found at %s — API-only mode. "
+        "Set FRONTEND_DIR to the folder containing index.html.",
+        FRONTEND_DIR,
+    )
 
 
 @app.exception_handler(Exception)

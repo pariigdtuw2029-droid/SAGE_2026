@@ -13,6 +13,19 @@ CSV/test data → FastAPI → validation → database → analysis/ML
               → risk/explanation → FastAPI → frontend dashboard
 ```
 
+## Deployment (public URL)
+
+Frontend and backend deploy together as **one service** — FastAPI serves the
+`Frontend/` folder, so a single Render/Railway URL covers the dashboard, API
+and docs. See **[DEPLOYMENT.md](./DEPLOYMENT.md)** (Blueprint:
+`render.yaml`).
+
+```bash
+# Local dev — both at http://127.0.0.1:8000
+cd backend && uvicorn app.main:app --reload
+# Dashboard: /app   API docs: /docs
+```
+
 ## Backend architecture
 
 ```

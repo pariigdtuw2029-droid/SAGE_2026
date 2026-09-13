@@ -1,0 +1,21 @@
+services:
+  sage-app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Same-origin deployment — no cross-origin setup needed
+      - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+      # SQLite inside the container; mount a volume to persist it
+      - DATABASE_URL=sqlite:////app/backend/backend/astra_guard.db
+    volumes:
+      - sage_db:/app/backend/backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  sage_db:

@@ -1,0 +1,26 @@
+# Render Blueprint — deploys frontend + backend as ONE service with ONE URL.
+# Commit this file, push to GitHub, then in Render: New → Blueprint → pick
+# this repo. Render reads this file and creates the service automatically.
+#
+# Runtime: Python (FastAPI) serving the static Frontend/ folder from the same
+# process — no Node build, no separate static host, no CORS setup needed.
+
+services:
+  - type: web
+    name: sage-app
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # $PORT is injected by Render; the frontend folder sits one level up
+    # (repo root), which app/main.py auto-detects.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.6
+      # Keep the SQLite DB on a persistent disk so data survives redeploys.
+      # Free plans don't support disks — without this the DB resets on each
+      # deploy (fine for a demo since services fall back to demo data).
+      - key: DATABASE_URL
+        value: sqlite:////opt/render/project/src/backend/astra_guard.db
