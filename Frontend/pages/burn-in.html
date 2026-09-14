@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Burn-In Telemetry &amp; Screening — ASTRA-GUARD</title>
+<title>Burn-In Telemetry &amp; Screening — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -192,7 +192,7 @@
     if (!file) return;
     window.SAGE.toast(`Uploading ${file.name} to POST /api/burnin/upload...`);
     try {
-      const res = await window.ASTRAGuardAPI.uploadBurnIn(file);
+      const res = await window.SAGEAPI.uploadBurnIn(file);
       if (res.ok && res.data) {
         const countMsg = res.data.records_processed != null
           ? `${res.data.records_processed} records processed`
@@ -298,9 +298,9 @@
 
     let lotsRes;
     try {
-      lotsRes = await window.ASTRAGuardAPI.getLots();
+      lotsRes = await window.SAGEAPI.getLots();
     } catch (err) {
-      renderState("Backend Connection Failed", "Unable to reach ASTRA-GUARD backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+      renderState("Backend Connection Failed", "Unable to reach SAGE backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
         <button class="btn" onclick="location.reload()">Retry Connection</button>
       `);
       return;
@@ -334,7 +334,7 @@
   async function onLotSelected(lotId, preferredCompId = "") {
     let compsRes;
     try {
-      compsRes = await window.ASTRAGuardAPI.getLotComponents(lotId);
+      compsRes = await window.SAGEAPI.getLotComponents(lotId);
     } catch (err) {
       renderState("Network Error", `Failed to load components for lot ${escapeHtml(lotId)}.`, true);
       return;
@@ -381,10 +381,10 @@
     let compRes, trajRes, repRes, alertsRes;
     try {
       [compRes, trajRes, repRes, alertsRes] = await Promise.all([
-        window.ASTRAGuardAPI.getComponent(compId),
-        window.ASTRAGuardAPI.getComponentTrajectory(compId),
-        window.ASTRAGuardAPI.getComponentReport(compId),
-        window.ASTRAGuardAPI.getAlerts(),
+        window.SAGEAPI.getComponent(compId),
+        window.SAGEAPI.getComponentTrajectory(compId),
+        window.SAGEAPI.getComponentReport(compId),
+        window.SAGEAPI.getAlerts(),
       ]);
     } catch (err) {
       renderState("Connection Failed", `Failed to load burn-in telemetry for ${escapeHtml(compId)}: server unreachable.`, true, `

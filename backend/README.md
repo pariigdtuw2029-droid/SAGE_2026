@@ -1,6 +1,6 @@
-# ASTRA-GUARD — FastAPI Backend (Member 1)
+# SAGE — FastAPI Backend (Member 1)
 
-This directory contains the FastAPI application backend for the ASTRA-GUARD early-screening and anomaly detection system.
+This directory contains the FastAPI application backend for the SAGE early-screening and anomaly detection system.
 
 ---
 

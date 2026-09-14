@@ -1,8 +1,8 @@
 /**
- * ASTRA-GUARD — Centralized Frontend API Client
+ * SAGE — Centralized Frontend API Client
  * Smart India Hackathon 2026 | Team BINARY BADDIES
  *
- * Connects the ASTRA-GUARD console to the FastAPI backend at http://127.0.0.1:8000
+ * Connects the SAGE console to the FastAPI backend at http://127.0.0.1:8000
  * Handles:
  *  1. POST /api/burnin/upload             - Upload burn-in test CSV
  *  2. GET  /api/lots                      - List all lots
@@ -19,7 +19,7 @@
 
   function getBaseUrl() {
     try {
-      const stored = localStorage.getItem("ASTRA_GUARD_API_URL");
+      const stored = localStorage.getItem("SAGE_API_URL");
       if (stored && stored.trim()) return stored.trim().replace(/\/+$/, "");
     } catch (_) {}
     if (global.__API_BASE_URL__) return String(global.__API_BASE_URL__).replace(/\/+$/, "");
@@ -37,7 +37,7 @@
     if (!url) return;
     const clean = url.trim().replace(/\/+$/, "");
     try {
-      localStorage.setItem("ASTRA_GUARD_API_URL", clean);
+      localStorage.setItem("SAGE_API_URL", clean);
     } catch (_) {}
   }
 
@@ -165,7 +165,7 @@
     },
   };
 
-  global.ASTRAGuardAPI = client;
+  global.SAGEAPI = client;
   if (global.SAGE) {
     global.SAGE.api = client;
   }

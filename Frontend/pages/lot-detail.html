@@ -58,9 +58,9 @@
     let summaryData = null;
 
     const [lotRes, sumRes, compsRes] = await Promise.all([
-      window.ASTRAGuardAPI.getLot(lotId),
-      window.ASTRAGuardAPI.getLotSummary(lotId),
-      window.ASTRAGuardAPI.getLotComponents(lotId),
+      window.SAGEAPI.getLot(lotId),
+      window.SAGEAPI.getLotSummary(lotId),
+      window.SAGEAPI.getLotComponents(lotId),
     ]);
 
     if (lotRes.ok && lotRes.data) {

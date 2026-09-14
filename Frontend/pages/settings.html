@@ -106,20 +106,20 @@
   const serverBadge = document.getElementById("serverBadge");
   const healthBadge = document.getElementById("healthBadge");
 
-  const currentBase = window.ASTRAGuardAPI.getBaseUrl();
+  const currentBase = window.SAGEAPI.getBaseUrl();
   apiInput.value = currentBase;
   srvUrl.textContent = currentBase;
 
   async function testBackend() {
     const base = apiInput.value.trim().replace(/\/+$/, "");
     srvUrl.textContent = base;
-    window.ASTRAGuardAPI.setBaseUrl(base);
+    window.SAGEAPI.setBaseUrl(base);
     serverBadge.className = "badge monitor";
     serverBadge.textContent = "probing...";
     healthBadge.className = "badge monitor";
     healthBadge.textContent = "probing...";
 
-    const res = await window.ASTRAGuardAPI.checkHealth();
+    const res = await window.SAGEAPI.checkHealth();
     if (res.ok && res.data && res.data.status === "healthy") {
       serverBadge.className = "badge safe";
       serverBadge.textContent = "connected (live)";

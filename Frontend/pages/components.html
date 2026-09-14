@@ -61,7 +61,7 @@
 
   // Populate lot dropdown with real database lots
   async function loadLots() {
-    const res = await window.ASTRAGuardAPI.getLots();
+    const res = await window.SAGEAPI.getLots();
     if (res.ok && Array.isArray(res.data)) {
       for (const l of res.data) {
         const o = document.createElement("option");
@@ -91,7 +91,7 @@
     currentComps = [];
     render();
 
-    const res = await window.ASTRAGuardAPI.getLotComponents(lotId);
+    const res = await window.SAGEAPI.getLotComponents(lotId);
     isLoading = false;
 
     if (res.ok && Array.isArray(res.data)) {

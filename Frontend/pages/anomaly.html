@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Anomaly Detection — ASTRA-GUARD</title>
+<title>Anomaly Detection — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -203,9 +203,9 @@
 
     let lotsRes;
     try {
-      lotsRes = await window.ASTRAGuardAPI.getLots();
+      lotsRes = await window.SAGEAPI.getLots();
     } catch (err) {
-      renderState("Backend Connection Failed", "Unable to communicate with the ASTRA-GUARD backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+      renderState("Backend Connection Failed", "Unable to communicate with the SAGE backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
         <button class="btn" onclick="location.reload()">Retry Connection</button>
       `);
       return;
@@ -247,7 +247,7 @@
 
     let res;
     try {
-      res = await window.ASTRAGuardAPI.getLotComponents(lotId);
+      res = await window.SAGEAPI.getLotComponents(lotId);
     } catch (err) {
       renderState("Network Error", `Failed to load components for lot ${escapeHtml(lotId)}: connection error.`, true, `
         <button class="btn" onclick="loadLotComponents('${escapeHtml(lotId)}')">Retry</button>

@@ -11,7 +11,7 @@ from database.connection import init_db
 from database.ingestion import ingest_dataframe
 from database.validation import DataValidationError
 
-logger = logging.getLogger("astra_guard.upload")
+logger = logging.getLogger("sage.upload")
 
 router = APIRouter(
     prefix="/api/burnin",

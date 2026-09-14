@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lot Analytics — ASTRA-GUARD</title>
+<title>Lot Analytics — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -94,7 +94,7 @@
               Cross-Lot Analytics Architecture Notice
             </div>
             <p style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);line-height:1.5;margin:0;">
-              Cross-lot multi-batch ranking and global trend aggregates are evaluated at the individual lot level in ASTRA-GUARD.
+              Cross-lot multi-batch ranking and global trend aggregates are evaluated at the individual lot level in SAGE.
               To inspect another batch, use the Lot selector above. Each lot's statistics and component screening evaluations reflect authoritative database records.
             </p>
           </div>
@@ -217,9 +217,9 @@
 
     let lotsRes;
     try {
-      lotsRes = await window.ASTRAGuardAPI.getLots();
+      lotsRes = await window.SAGEAPI.getLots();
     } catch (err) {
-      renderState("Backend Connection Failed", "Unable to communicate with the ASTRA-GUARD backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+      renderState("Backend Connection Failed", "Unable to communicate with the SAGE backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
         <button class="btn" onclick="location.reload()">Retry Connection</button>
       `);
       return;
@@ -265,9 +265,9 @@
     let lotRes, summaryRes, compsRes;
     try {
       [lotRes, summaryRes, compsRes] = await Promise.all([
-        window.ASTRAGuardAPI.getLot(lotId),
-        window.ASTRAGuardAPI.getLotSummary(lotId),
-        window.ASTRAGuardAPI.getLotComponents(lotId),
+        window.SAGEAPI.getLot(lotId),
+        window.SAGEAPI.getLotSummary(lotId),
+        window.SAGEAPI.getLotComponents(lotId),
       ]);
     } catch (err) {
       renderState("Network Error", `Failed to load analytics for lot ${escapeHtml(lotId)}: server unreachable.`, true, `

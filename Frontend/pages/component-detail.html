@@ -125,12 +125,12 @@
     let compRes, trajRes, repRes;
     try {
       [compRes, trajRes, repRes] = await Promise.all([
-        window.ASTRAGuardAPI.getComponent(id),
-        window.ASTRAGuardAPI.getComponentTrajectory(id),
-        window.ASTRAGuardAPI.getComponentReport(id),
+        window.SAGEAPI.getComponent(id),
+        window.SAGEAPI.getComponentTrajectory(id),
+        window.SAGEAPI.getComponentReport(id),
       ]);
     } catch (err) {
-      renderState("Connection Failed", "Unable to communicate with the ASTRA-GUARD backend API at http://127.0.0.1:8000. Please check your network connection.", true, `
+      renderState("Connection Failed", "Unable to communicate with the SAGE backend API at http://127.0.0.1:8000. Please check your network connection.", true, `
         <button class="btn" onclick="location.reload()">Retry</button>
         <a class="btn ghost" href="components.html">Back to Components</a>
       `);

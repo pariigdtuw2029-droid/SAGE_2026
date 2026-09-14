@@ -15,7 +15,7 @@ from app.api.lots import router as lots_router
 from app.api.components import router as components_router
 from app.api.alerts import router as alerts_router
 
-logger = logging.getLogger("astra_guard")
+logger = logging.getLogger("sage")
 
 
 @asynccontextmanager

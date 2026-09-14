@@ -111,8 +111,8 @@
     let res, compRes;
     try {
       [res, compRes] = await Promise.all([
-        window.ASTRAGuardAPI.getComponentReport(cid),
-        window.ASTRAGuardAPI.getComponent(cid),
+        window.SAGEAPI.getComponentReport(cid),
+        window.SAGEAPI.getComponent(cid),
       ]);
     } catch (err) {
       const errText = [
@@ -120,7 +120,7 @@
         "=".repeat(60),
         "STATUS: BACKEND CONNECTION FAILED",
         "",
-        `Unable to reach FastAPI backend at ${window.ASTRAGuardAPI.getBaseUrl()}.`,
+        `Unable to reach FastAPI backend at ${window.SAGEAPI.getBaseUrl()}.`,
         "Please ensure the backend server is running on port 8000.",
         "=".repeat(60),
       ].join("\n");
@@ -326,9 +326,9 @@
 
     let res;
     try {
-      res = await window.ASTRAGuardAPI.getLotSummary(lid);
+      res = await window.SAGEAPI.getLotSummary(lid);
     } catch (err) {
-      document.getElementById("preview").textContent = `Error: Unable to reach backend at ${window.ASTRAGuardAPI.getBaseUrl()}`;
+      document.getElementById("preview").textContent = `Error: Unable to reach backend at ${window.SAGEAPI.getBaseUrl()}`;
       toast("Connection failed");
       return;
     }
@@ -388,9 +388,9 @@
 
     let res;
     try {
-      res = await window.ASTRAGuardAPI.getAlerts();
+      res = await window.SAGEAPI.getAlerts();
     } catch (err) {
-      document.getElementById("preview").textContent = `Error: Unable to reach backend at ${window.ASTRAGuardAPI.getBaseUrl()}`;
+      document.getElementById("preview").textContent = `Error: Unable to reach backend at ${window.SAGEAPI.getBaseUrl()}`;
       toast("Connection failed");
       return;
     }
@@ -470,7 +470,7 @@
     const blob = new Blob([last], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `astraguard-report-${Date.now().toString(36)}.txt`;
+    a.download = `sage-report-${Date.now().toString(36)}.txt`;
     a.click();
     URL.revokeObjectURL(a.href);
     toast("Downloaded .txt report");
