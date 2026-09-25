@@ -188,9 +188,22 @@
 
       try {
         const res = await window.SAGEAPI.login(username, password);
+
         if (res.ok) {
           const params = new URLSearchParams(location.search);
-          const redirect = params.get("redirect") || "components.html";
+          const defaultRedirect = (location.protocol === "file:") ? "../index.html" : "/app";
+          const requestedRedirect = params.get("redirect");
+
+          let redirect = defaultRedirect;
+
+          if (
+            requestedRedirect &&
+            requestedRedirect.startsWith("/") &&
+            !requestedRedirect.startsWith("//")
+          ) {
+            redirect = requestedRedirect;
+          }
+
           window.location.href = redirect;
         } else {
           showError(res.error || "Authentication failed. Invalid username or password.");

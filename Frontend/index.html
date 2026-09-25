@@ -8,6 +8,25 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
+<script src="api.js"></script>
+<script>
+  (function () {
+    function isAuthed() {
+      if (window.SAGEAPI && typeof window.SAGEAPI.isAuthenticated === "function") {
+        return window.SAGEAPI.isAuthenticated();
+      }
+      try {
+        return Boolean(localStorage.getItem("SAGE_AUTH_TOKEN"));
+      } catch (_) {
+        return false;
+      }
+    }
+    if (!isAuthed()) {
+      var target = (location.protocol === "file:") ? "login.html" : "/login.html";
+      window.location.replace(target);
+    }
+  })();
+</script>
 </head>
 <body>
 
