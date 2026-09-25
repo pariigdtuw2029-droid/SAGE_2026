@@ -180,8 +180,8 @@ MOCK_REPORTS: Dict[str, dict] = {
         "confidence": 0.90,
         "reasons": [
             "Batch-relative outlier (z=9.61 vs its own lot)",
-            "[SHAP] Anomaly score driven mainly by Leakage_delta_24h(+0.04), Leakage_pct_change_24h(+0.03)",
-            "[SHAP] Predicted Leakage 168h drift driven mainly by Leakage_slope(+0.582), Vth_slope(+0.151)",
+            "[SHAP] Anomaly score influenced by Leakage_delta_24h(+0.04), Leakage_pct_change_24h(+0.03) (SHAP attribution)",
+            "[SHAP] Predicted Leakage 168h drift influenced by Leakage_slope(+0.582), Vth_slope(+0.151) (SHAP attribution)",
             "Predicted 168h drift rate exceeds the Safe-population safety slope — flagged for early rejection",
         ],
         "model_version": "sage-1.1",
@@ -201,12 +201,16 @@ MOCK_REPORTS: Dict[str, dict] = {
             {
                 "feature": "Leakage_slope",
                 "contribution": 0.582,
-                "reason": "Predicted Leakage 168h drift driven mainly by Leakage_slope(+0.582)",
+                "reason": "Predicted Leakage 168h drift influenced by Leakage_slope (+0.582 SHAP attribution).",
+                "module": "MODULE_B",
+                "evidence_type": "SHAP",
             },
             {
                 "feature": "Lot_Relative",
                 "contribution": 9.61,
                 "reason": "Batch-relative outlier (z=9.61 vs its own lot)",
+                "module": "MODULE_A",
+                "evidence_type": "DRIFT",
             },
         ],
     },

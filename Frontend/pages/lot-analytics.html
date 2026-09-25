@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lot Analytics — SAGE</title>
+<title>Lot Overview — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -21,6 +21,15 @@
 
     <!-- Main Analysis View -->
     <div id="analysisView">
+      <!-- Navigation Ribbon -->
+      <nav class="subnav-bar">
+        <span class="subnav-badge">02 // Lot Overview</span>
+        <a class="subnav-tab active" href="lot-analytics.html" id="subnavLotAnalytics">01 Lot Overview &amp; Anomaly Screening</a>
+        <a class="subnav-tab" href="lot-detail.html" id="subnavWaferGrid">02 Wafer Risk Grid</a>
+        <a class="subnav-tab" href="burn-in.html">← Chamber Ingestion</a>
+        <a class="subnav-tab" href="component-detail.html" id="subnavCompLink">Component Inspector →</a>
+      </nav>
+
       <!-- Lot Metadata & Navigation Bar -->
       <section class="box" id="lotMetaBar" style="padding:12px 18px;margin-bottom:16px;"></section>
 
@@ -51,6 +60,7 @@
             <span class="item"><span class="dot monitor"></span> Monitor</span>
             <span class="item"><span class="dot hold"></span> Hold</span>
             <span class="item"><span class="dot reject"></span> Reject</span>
+            <span class="item" style="color:var(--reject);"><span style="display:inline-block;width:12px;border-top:1px dashed var(--reject);vertical-align:middle;margin-right:4px;"></span> Anomaly Threshold</span>
           </div>
         </section>
       </div>
@@ -117,6 +127,7 @@
   let currentLotSummary = null;
   let currentComponents = [];
   let sortBy = "risk"; // "risk" or "anomaly"
+  let threshold = 20;
 
   function escapeHtml(str) {
     if (!str) return "";
@@ -160,12 +171,17 @@
 
     const actionsHtml = `
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span class="badge safe" style="font-size:10px;">LIVE • FastAPI</span>
+        <span class="badge operational" style="font-size:10px;">LIVE • CONNECTED</span>
         <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
           <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Lot:</span>
           <select class="select" id="lotSel" style="min-width:180px;font-size:12px;padding:4px 8px;">
             ${lotOptions || '<option value="">Loading lots...</option>'}
           </select>
+        </label>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Anomaly Thr:</span>
+          <input type="range" id="thr" min="10" max="80" value="${threshold}" style="width:80px;" />
+          <span class="kpi-value" style="font-size:12px;min-width:20px;" id="thrVal">${threshold}</span>
         </label>
         <select class="select" id="sortSel" style="font-size:12px;padding:4px 8px;">
           <option value="risk" ${sortBy === 'risk' ? 'selected' : ''}>Sort by Risk Score</option>
@@ -178,11 +194,11 @@
           <option value="HOLD">HOLD</option>
           <option value="REJECT">REJECT</option>
         </select>
-        <input type="text" id="qInput" class="input" placeholder="Filter component..." style="width:120px;font-size:12px;padding:4px 8px;" />
+        <input type="text" id="qInput" class="input" placeholder="Filter component..." style="width:110px;font-size:12px;padding:4px 8px;" />
       </div>
     `;
 
-    topbar("Lot Analytics", null, null, actionsHtml);
+    topbar("Lot Overview", null, null, actionsHtml);
 
     const lotSel = document.getElementById("lotSel");
     if (lotSel) {
@@ -191,6 +207,18 @@
         if (selected && selected !== currentLotId) {
           currentLotId = selected;
           loadLotAnalytics(currentLotId);
+        }
+      });
+    }
+
+    const thr = document.getElementById("thr");
+    if (thr) {
+      thr.addEventListener("input", (e) => {
+        threshold = +e.target.value;
+        const valEl = document.getElementById("thrVal");
+        if (valEl) valEl.textContent = threshold;
+        if (currentLotInfo && currentLotSummary) {
+          renderAnalytics(currentLotInfo, currentLotSummary, currentComponents);
         }
       });
     }
@@ -210,130 +238,92 @@
     if (qInput) qInput.addEventListener("input", renderComponentTable);
   }
 
-  async function init() {
-    renderState("Connecting", "Loading live lots from FastAPI backend...", false, `
-      <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
-    `);
-
-    let lotsRes;
-    try {
-      lotsRes = await window.SAGEAPI.getLots();
-    } catch (err) {
-      renderState("Backend Connection Failed", "Unable to communicate with the SAGE backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
-        <button class="btn" onclick="location.reload()">Retry Connection</button>
-      `);
-      return;
-    }
-
-    if (!lotsRes.ok || !Array.isArray(lotsRes.data) || lotsRes.data.length === 0) {
-      renderState("No Lots Found", "No burn-in lots are currently registered in the screening database.", true, `
-        <a class="btn" href="burn-in.html">Upload Burn-In Data</a>
-      `);
-      return;
-    }
-
-    allLots = lotsRes.data;
-
-    // Check query params or select default
-    const qLot = (param("lot") || "").trim();
-    if (qLot && allLots.find((l) => (l.lot_id || l) === qLot)) {
-      currentLotId = qLot;
-    } else {
-      const flagLot = allLots.find((l) => (l.lot_id || l) === "ISRO-SCL-250113-02");
-      currentLotId = flagLot ? "ISRO-SCL-250113-02" : (allLots[0].lot_id || allLots[0]);
-    }
-
-    updateTopbar();
-    loadLotAnalytics(currentLotId);
-  }
-
   async function loadLotAnalytics(lotId) {
-    if (!lotId) {
-      renderState("Select a Lot", "Please select a lot to inspect authentic screening analytics.", false);
-      return;
-    }
-
-    // Clear stale component data immediately to avoid leakage
-    currentComponents = [];
-    currentLotInfo = null;
-    currentLotSummary = null;
-
-    renderState("Loading Analytics", `Fetching screening summary and telemetry for ${escapeHtml(lotId)}...`, false, `
+    renderState("Loading Lot Analytics", `Fetching batch qualification telemetry and component register for ${escapeHtml(lotId)}...`, false, `
       <div class="dot monitor" style="animation:pulse 1.2s infinite;margin:0 auto;"></div>
     `);
 
-    let lotRes, summaryRes, compsRes;
     try {
-      [lotRes, summaryRes, compsRes] = await Promise.all([
+      const [lotRes, summaryRes, compsRes] = await Promise.all([
         window.SAGEAPI.getLot(lotId),
         window.SAGEAPI.getLotSummary(lotId),
         window.SAGEAPI.getLotComponents(lotId),
       ]);
-    } catch (err) {
-      renderState("Network Error", `Failed to load analytics for lot ${escapeHtml(lotId)}: server unreachable.`, true, `
-        <button class="btn" onclick="loadLotAnalytics('${escapeHtml(lotId)}')">Retry</button>
-      `);
-      return;
-    }
 
-    if (!lotRes.ok && !summaryRes.ok) {
-      if ((lotRes && lotRes.status === 404) || (summaryRes && summaryRes.status === 404)) {
-        renderState("Lot Not Found (404)", `Lot "${escapeHtml(lotId)}" was not found in the screening database.`, true, `
-          <a class="btn" href="burn-in.html">Upload New Data</a>
-        `);
-      } else {
-        renderState("Request Failed", `Unable to load live analytics for this lot (${lotRes.error || summaryRes.error}).`, true);
+      if (!lotRes.ok) {
+        if (lotRes.status === 404) {
+          renderState(
+            "Lot Not Found (404)",
+            `Lot "<strong>${escapeHtml(lotId)}</strong>" does not exist in the screening database. No fake analytics will be fabricated.`,
+            true,
+            `<a class="btn" href="burn-in.html">Upload New Data</a>`
+          );
+        } else {
+          renderState("Backend Request Failed", `Server returned status ${lotRes.status}: ${escapeHtml(lotRes.error || "Unknown error")}.`, true);
+        }
+        return;
       }
-      return;
+
+      currentLotInfo = lotRes.data;
+      currentLotSummary = summaryRes.ok ? summaryRes.data : null;
+      currentComponents = (compsRes.ok && Array.isArray(compsRes.data)) ? compsRes.data : [];
+
+      renderAnalytics(currentLotInfo, currentLotSummary, currentComponents);
+    } catch (err) {
+      console.error(err);
+      renderState(
+        "Connection Error",
+        "Unable to reach the SAGE backend API at http://127.0.0.1:8000. Please check your network connection.",
+        true,
+        `<button class="btn" onclick="location.reload()">Retry</button>`
+      );
     }
+  }
 
-    currentLotInfo = (lotRes && lotRes.ok) ? lotRes.data : { lot_id: lotId, status: "IN_REVIEW" };
-    currentLotSummary = (summaryRes && summaryRes.ok) ? summaryRes.data : null;
-    currentComponents = (compsRes && compsRes.ok && Array.isArray(compsRes.data)) ? compsRes.data : [];
-
+  function renderAnalytics(lot, summary, components) {
     document.getElementById("stateView").style.display = "none";
     document.getElementById("analysisView").style.display = "block";
 
-    renderLotDashboard();
-  }
+    updateTopbar();
 
-  function renderLotDashboard() {
-    const lid = escapeHtml(currentLotId);
-    const status = escapeHtml(currentLotInfo?.status || "IN_REVIEW");
-    const summary = currentLotSummary || {};
-    const totalComps = summary.total_components != null ? summary.total_components : currentComponents.length;
-    const passed = summary.passed != null ? summary.passed : currentComponents.filter((c) => (c.decision || "").toUpperCase() === "PASS").length;
-    const monitor = summary.monitor != null ? summary.monitor : currentComponents.filter((c) => (c.decision || "").toUpperCase() === "MONITOR").length;
-    const hold = summary.hold != null ? summary.hold : currentComponents.filter((c) => (c.decision || "").toUpperCase() === "HOLD").length;
-    const reject = summary.reject != null ? summary.reject : currentComponents.filter((c) => (c.decision || "").toUpperCase() === "REJECT").length;
-    const highRisk = summary.high_risk_components != null ? summary.high_risk_components : currentComponents.filter((c) => c.risk_level === "HIGH" || (c.risk_score || 0) >= 60).length;
-    const avgAnomaly = summary.average_anomaly_score != null ? summary.average_anomaly_score : null;
+    const lid = lot.lot_id || currentLotId;
+    const waferSubnav = document.getElementById("subnavWaferGrid");
+    if (waferSubnav) waferSubnav.href = `lot-detail.html?lot=${encodeURIComponent(lid)}`;
+
+    const compLink = document.getElementById("subnavCompLink");
+    if (compLink && components.length > 0) {
+      compLink.href = `component-detail.html?comp=${encodeURIComponent(components[0].component_id)}&lot=${encodeURIComponent(lid)}`;
+    }
 
     // 1. Lot Metadata Ribbon
-    const statusBadge = status === "APPROVED" ? '<span class="badge safe">APPROVED</span>'
-                      : status === "FLAGGED" ? '<span class="badge reject">FLAGGED</span>'
-                      : '<span class="badge monitor">IN REVIEW</span>';
+    const s = summary || {};
+    const totalComps = s.total_components ?? lot.total_components ?? components.length;
+    const passed = s.passed ?? 0;
+    const monitor = s.monitor ?? 0;
+    const hold = s.hold ?? 0;
+    const reject = s.reject ?? 0;
+    const avgAnomaly = s.average_anomaly_score ?? lot.average_anomaly_score;
+    const avgRisk = s.average_risk_score ?? lot.average_risk_score;
+    const highRisk = s.high_risk_components ?? 0;
+    const status = lot.status || (reject > 0 ? "Flagged" : "Screened");
 
     document.getElementById("lotMetaBar").innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <span style="font-family:var(--mono);font-size:15px;font-weight:600;color:var(--signal);">${lid}</span>
-          ${statusBadge}
-          <span class="badge neutral">${totalComps} Components</span>
-          ${highRisk > 0 ? `<span class="badge reject">${highRisk} High-Risk Units</span>` : `<span class="badge safe">0 High-Risk Units</span>`}
+          <span style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--signal);letter-spacing:0.04em;">${escapeHtml(lid)}</span>
+          <span class="badge ${status === 'Screened' ? 'safe' : 'reject'}">${escapeHtml(status)}</span>
+          <span class="badge neutral">${totalComps} components</span>
+          <span class="badge neutral">Avg Risk: ${fmt(avgRisk)}</span>
+          ${highRisk > 0 ? `<span class="badge reject">${highRisk} High-Risk</span>` : `<span class="badge safe">0 High-Risk</span>`}
         </div>
-        <div style="display:flex;gap:8px;">
-          <a class="btn ghost" href="burn-in.html" style="font-size:11px;padding:5px 12px;text-decoration:none;">
-            Burn-In Status →
-          </a>
-          <a class="btn ghost" href="reports.html?lot=${encodeURIComponent(currentLotId)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
-            Lot Report →
-          </a>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a class="btn ghost" href="lot-detail.html?lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:6px 12px;text-decoration:none;">Wafer Risk Grid →</a>
+          <a class="btn ghost" href="reports.html?lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:6px 12px;text-decoration:none;">Audit Report →</a>
         </div>
       </div>
     `;
 
-    // 2. Overview KPIs
+    // 2. KPI Summary Cards
     document.getElementById("kpis").innerHTML = `
       <div class="kpi">
         <div class="kpi-label">Lot Population</div>
@@ -399,11 +389,16 @@
                   : dec === "HOLD" ? window.SAGE.COLORS.hold
                   : dec === "MONITOR" ? window.SAGE.COLORS.monitor
                   : window.SAGE.COLORS.safe;
+      const anom = c.anomaly_score != null ? Math.min(100, Math.max(0, c.anomaly_score)) : 0;
+      const isOver = anom >= threshold;
       return {
-        x: c.anomaly_score != null ? Math.min(100, Math.max(0, c.anomaly_score)) : 0,
+        id: c.component_id,
+        decision: c.decision,
+        risk: c.risk_score,
+        x: anom,
         y: c.risk_score != null ? Math.min(100, Math.max(0, c.risk_score)) : 0,
         color,
-        r: 3.2,
+        r: isOver ? 4.0 : 3.0,
       };
     });
 
@@ -411,6 +406,7 @@
 
     charts.scatterChart(scatterCanvas, scatterPoints, {
       height: 240,
+      threshold,
       axisLabels: { x: "Anomaly Score (0-100)", y: "Risk Score (0-100)" },
     });
 
@@ -437,49 +433,65 @@
       return (b.risk_score || 0) - (a.risk_score || 0);
     });
 
-    const tbody = document.querySelector("#compTable tbody");
-    document.getElementById("tableCount").textContent = `${filtered.length} matching component${filtered.length === 1 ? '' : 's'}`;
+    document.getElementById("tableCount").textContent = `${filtered.length} of ${currentComponents.length} components`;
 
+    const tbody = document.querySelector("#compTable tbody");
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--steel-dim);padding:24px;text-align:center;">No matching live components in this lot.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--steel-dim);padding:24px;">No components match the selected filters.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = filtered.map((c) => {
       const cid = escapeHtml(c.component_id);
-      const anom = fmt(c.anomaly_score);
-      const drift = fmt(c.drift_score);
-      const pred = c.predicted_168h != null ? fmt(c.predicted_168h, 3) : "—";
-      const risk = fmt(c.risk_score);
-      const rLvl = escapeHtml(c.risk_level || "—");
       const dec = escapeHtml(c.decision || "—");
+      const decClass = (c.decision || "").toLowerCase();
       const tier = escapeHtml(c.reliability_tier || "—");
-      const tierClass = tier === "Space-Safe" ? "safe" : tier === "High-Risk" ? "reject" : "monitor";
+      const tierClass = c.reliability_tier === "Space-Safe" ? "safe" : c.reliability_tier === "High-Risk" ? "reject" : "monitor";
+      const riskLevel = escapeHtml(c.risk_level || "—");
+      const riskClass = riskLevel === "CRITICAL" ? "reject" : riskLevel === "HIGH" ? "hold" : riskLevel === "MEDIUM" ? "monitor" : "safe";
+      const isOver = (c.anomaly_score || 0) >= threshold;
 
       return `
-        <tr class="click" data-c="${cid}" data-lot="${escapeHtml(currentLotId)}">
-          <td><b style="color:var(--signal);">${cid}</b></td>
-          <td style="font-family:var(--mono);">${anom}</td>
-          <td style="font-family:var(--mono);">${drift}</td>
-          <td style="font-family:var(--mono);color:var(--gold);">${pred}</td>
-          <td style="font-family:var(--mono);font-weight:600;">${risk}</td>
-          <td><span class="badge neutral">${rLvl}</span></td>
-          <td>${badge(dec)}</td>
+        <tr style="cursor:pointer;" onclick="location.href='component-detail.html?comp=${encodeURIComponent(c.component_id)}&lot=${encodeURIComponent(currentLotId)}'" title="Click to view component telemetry">
+          <td><b>${cid}</b></td>
+          <td style="font-family:var(--mono);color:${isOver ? 'var(--reject)' : 'var(--frost)'};font-weight:${isOver ? '600' : '400'};">${fmt(c.anomaly_score)}</td>
+          <td style="font-family:var(--mono);">${fmt(c.drift_score)}</td>
+          <td style="font-family:var(--mono);">${c.predicted_168h != null ? fmt(c.predicted_168h, 3) : '—'}</td>
+          <td style="font-family:var(--mono);font-weight:600;color:var(--signal);">${fmt(c.risk_score)}</td>
+          <td><span class="badge ${riskClass}">${riskLevel}</span></td>
+          <td><span class="badge ${decClass}">${dec}</span></td>
           <td><span class="badge ${tierClass}">${tier}</span></td>
         </tr>
       `;
     }).join("");
   }
 
-  // Row click delegation
-  document.querySelector("#compTable tbody").addEventListener("click", (e) => {
-    const tr = e.target.closest("tr.click");
-    if (tr && tr.dataset.c) {
-      const comp = encodeURIComponent(tr.dataset.c);
-      const lot = tr.dataset.lot ? `&lot=${encodeURIComponent(tr.dataset.lot)}` : "";
-      location.href = `component-detail.html?comp=${comp}${lot}`;
+  async function init() {
+    try {
+      const lotsRes = await window.SAGEAPI.getLots();
+      if (lotsRes.ok && Array.isArray(lotsRes.data) && lotsRes.data.length > 0) {
+        allLots = lotsRes.data;
+      } else {
+        allLots = [{ lot_id: "LOT_27" }, { lot_id: "ISRO-SCL-250113-02" }];
+      }
+
+      // Check query param 'lot', else check flagship, else first
+      const requestedLot = param("lot");
+      const foundRequested = requestedLot && allLots.some((l) => (l.lot_id || l) === requestedLot.toUpperCase());
+
+      if (foundRequested) {
+        currentLotId = requestedLot.toUpperCase();
+      } else {
+        const flagLot = allLots.find((l) => (l.lot_id || l) === "ISRO-SCL-250113-02");
+        currentLotId = flagLot ? "ISRO-SCL-250113-02" : (allLots[0].lot_id || allLots[0]);
+      }
+
+      loadLotAnalytics(currentLotId);
+    } catch (e) {
+      console.error(e);
+      loadLotAnalytics("ISRO-SCL-250113-02");
     }
-  });
+  }
 
   init();
 </script>

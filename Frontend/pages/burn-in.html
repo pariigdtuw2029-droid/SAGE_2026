@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Burn-In Telemetry &amp; Screening — SAGE</title>
+<title>Burn-In Ingestion &amp; Chamber Overview — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -21,6 +21,14 @@
 
     <!-- Main analysis view -->
     <div id="analysisView">
+      <!-- Navigation Ribbon -->
+      <nav class="subnav-bar">
+        <span class="subnav-badge">01 // Burn-In Ingestion</span>
+        <a class="subnav-tab active" href="burn-in.html">01 Chamber Telemetry &amp; Ingestion</a>
+        <a class="subnav-tab" href="lot-analytics.html" id="burnInLotLink">02 Lot Overview →</a>
+        <a class="subnav-tab" href="component-detail.html" id="burnInDetailLink">03 Component Inspector →</a>
+      </nav>
+
       <!-- Component Screening Metadata Ribbon -->
       <section class="box" id="burnInMetaBar" style="padding:12px 18px;margin-bottom:16px;"></section>
 
@@ -91,7 +99,7 @@
             <h2 class="box-title">High-Risk Screening Alerts (Top 10)</h2>
             <p class="box-sub">Active components flagged for thermal screening and risk review</p>
           </div>
-          <span class="badge neutral" style="font-size:10px;">Source: GET /api/alerts</span>
+          <span class="badge neutral" style="font-size:10px;">Live Risk Alerts</span>
         </div>
         <ul class="exp-list" id="alertsList"></ul>
       </section>
@@ -120,7 +128,7 @@
                 Cross-Lot Burn-In Analytics Notice
               </div>
               <p style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);line-height:1.5;margin:0;">
-                Cross-lot burn-in telemetry comparison is not available in the current API contract. Burn-in trajectories are evaluated at the component level using authoritative screening telemetry from GET /api/components/{id}/trajectory.
+                Cross-lot burn-in telemetry comparison is evaluated on component-level records. Burn-in trajectories are visualized from authoritative component screening telemetry.
               </p>
             </div>
           </div>
@@ -132,6 +140,58 @@
 
 <!-- Hidden File Input for Burn-In CSV Upload -->
 <input type="file" id="burnInCsvInput" accept=".csv" style="display:none;" />
+
+<!-- Data Quality Validation Gate Modal -->
+<div id="dataQualityModal" style="display:none;position:fixed;inset:0;background:rgba(5,9,16,0.85);backdrop-filter:blur(6px);z-index:9999;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+  <div style="background:var(--panel);border:1px solid var(--line-strong);border-radius:12px;max-width:720px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.6);padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2 style="font-family:var(--heading);font-size:18px;margin:0;color:var(--frost);">Data Quality &amp; Validation Gate</h2>
+          <span id="dqStatusBadge" class="badge safe">PASS</span>
+        </div>
+        <p id="dqFilenameSub" style="font-family:var(--mono);font-size:12px;color:var(--steel);margin:4px 0 0;">Validation results for uploaded burn-in telemetry dataset</p>
+      </div>
+      <button type="button" id="closeDqModalBtn" class="btn ghost" style="padding:4px 10px;font-size:12px;">✕ Close</button>
+    </div>
+
+    <!-- Summary KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:20px;" id="dqMetricsGrid">
+      <div class="kpi" style="padding:10px 12px;">
+        <div class="kpi-label">Rows Received</div>
+        <div class="kpi-value" id="dqTotalRows" style="font-size:18px;">0</div>
+        <div class="kpi-sub">total input rows</div>
+      </div>
+      <div class="kpi" style="padding:10px 12px;">
+        <div class="kpi-label">Accepted Records</div>
+        <div class="kpi-value" id="dqAcceptedRows" style="font-size:18px;color:var(--safe);">0</div>
+        <div class="kpi-sub">passed to pipeline</div>
+      </div>
+      <div class="kpi" style="padding:10px 12px;">
+        <div class="kpi-label">Rejected Records</div>
+        <div class="kpi-value" id="dqRejectedRows" style="font-size:18px;color:var(--reject);">0</div>
+        <div class="kpi-sub">hard structural errors</div>
+      </div>
+      <div class="kpi" style="padding:10px 12px;">
+        <div class="kpi-label">Warnings</div>
+        <div class="kpi-value" id="dqWarningRows" style="font-size:18px;color:var(--monitor);">0</div>
+        <div class="kpi-sub">imputable / schedule drift</div>
+      </div>
+    </div>
+
+    <!-- Grouped Validation Issues -->
+    <div id="dqIssuesSection" style="margin-top:14px;">
+      <h3 style="font-family:var(--mono);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--steel);margin-bottom:8px;">
+        Validation Issues Log (<span id="dqIssueCount">0</span>)
+      </h3>
+      <div id="dqIssuesList" style="max-height:220px;overflow-y:auto;background:rgba(7,13,24,0.6);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11.5px;"></div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+      <button type="button" id="dismissDqModalBtn" class="btn" style="font-size:12px;padding:6px 18px;">Acknowledge &amp; View Burn-In Data</button>
+    </div>
+  </div>
+</div>
 
 <script src="../api.js"></script>
 <script src="../app.js"></script>
@@ -185,22 +245,92 @@
     `;
   }
 
+  function showDataQualityModal(dq, filename) {
+    if (!dq) return;
+    const modal = document.getElementById("dataQualityModal");
+    const badgeEl = document.getElementById("dqStatusBadge");
+    const filenameSub = document.getElementById("dqFilenameSub");
+    const totalEl = document.getElementById("dqTotalRows");
+    const acceptedEl = document.getElementById("dqAcceptedRows");
+    const rejectedEl = document.getElementById("dqRejectedRows");
+    const warningEl = document.getElementById("dqWarningRows");
+    const issuesListEl = document.getElementById("dqIssuesList");
+    const issueCountEl = document.getElementById("dqIssueCount");
+
+    if (!modal) return;
+
+    if (filenameSub) filenameSub.textContent = `File: ${filename || 'Uploaded dataset'} · SAGE Ingestion Engine (sage-1.1)`;
+    if (totalEl) totalEl.textContent = String(dq.total_rows ?? 0);
+    if (acceptedEl) acceptedEl.textContent = String(dq.accepted_rows ?? 0);
+    if (rejectedEl) rejectedEl.textContent = String(dq.rejected_rows ?? 0);
+    if (warningEl) warningEl.textContent = String(dq.warning_rows ?? 0);
+
+    const status = dq.status || "PASS";
+    if (badgeEl) {
+      badgeEl.textContent = status;
+      badgeEl.className = `badge ${status === "PASS" ? "safe" : status === "WARNING" ? "monitor" : "reject"}`;
+    }
+
+    const issues = Array.isArray(dq.issues) ? dq.issues : [];
+    if (issueCountEl) issueCountEl.textContent = String(issues.length);
+
+    if (issuesListEl) {
+      if (issues.length === 0) {
+        issuesListEl.innerHTML = `<div style="color:var(--safe);padding:8px;">✓ All records passed data quality and structural validation with zero errors or warnings.</div>`;
+      } else {
+        issuesListEl.innerHTML = issues.slice(0, 50).map((iss) => `
+          <div style="padding:6px 0;border-bottom:1px solid rgba(238,243,247,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div>
+              <span class="badge ${iss.severity === 'ERROR' ? 'reject' : 'neutral'}" style="font-size:9.5px;margin-right:6px;">${escapeHtml(iss.category || 'MALFORMED_RECORD')}</span>
+              <span style="color:var(--frost);">${escapeHtml(iss.reason || iss.detail || '')}</span>
+            </div>
+            <span style="color:var(--steel-dim);font-size:10.5px;white-space:nowrap;">${iss.component_id ? `Part: ${escapeHtml(iss.component_id)}` : (iss.row != null ? `Row ${iss.row}` : '')}</span>
+          </div>
+        `).join("");
+        if (issues.length > 50) {
+          issuesListEl.innerHTML += `<div style="color:var(--steel-dim);padding:6px 0;text-align:center;">... and ${issues.length - 50} more issues.</div>`;
+        }
+      }
+    }
+
+    modal.style.display = "flex";
+  }
+
+  const closeDqBtn = document.getElementById("closeDqModalBtn");
+  if (closeDqBtn) closeDqBtn.addEventListener("click", () => {
+    document.getElementById("dataQualityModal").style.display = "none";
+  });
+  const dismissDqBtn = document.getElementById("dismissDqModalBtn");
+  if (dismissDqBtn) dismissDqBtn.addEventListener("click", () => {
+    document.getElementById("dataQualityModal").style.display = "none";
+  });
+
   // Setup CSV Upload Handler
   const fileInput = document.getElementById("burnInCsvInput");
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files[0];
     if (!file) return;
-    window.SAGE.toast(`Uploading ${file.name} to POST /api/burnin/upload...`);
+    window.SAGE.toast(`Uploading ${file.name} to burn-in ingestion pipeline...`);
     try {
       const res = await window.SAGEAPI.uploadBurnIn(file);
       if (res.ok && res.data) {
-        const countMsg = res.data.records_processed != null
-          ? `${res.data.records_processed} records processed`
+        const countMsg = res.data.valid_rows != null
+          ? `${res.data.valid_rows} records validated & accepted`
           : (res.data.message || "Upload successful");
         window.SAGE.toast(`Uploaded ${res.data.filename || file.name}: ${countMsg}`);
+        if (res.data.data_quality) {
+          showDataQualityModal(res.data.data_quality, res.data.filename || file.name);
+        }
         await init();
       } else {
-        window.SAGE.toast(`Upload error: ${res.error || "Failed to process CSV"}`);
+        const dq = (res.data && res.data.data_quality) || (typeof res.error === "object" && res.error ? res.error.data_quality : null);
+        const errMsg = (typeof res.error === "object" && res.error !== null)
+          ? (res.error.message || "Validation error")
+          : (res.error || "Failed to process CSV");
+        window.SAGE.toast(`Upload error: ${errMsg}`);
+        if (dq) {
+          showDataQualityModal(dq, file.name);
+        }
       }
     } catch (err) {
       window.SAGE.toast(`Upload failed: ${err.message || "Network error"}`);
@@ -223,7 +353,7 @@
     const actionsHtml = `
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <button class="btn" id="uploadBtn" style="font-size:12px;padding:4px 10px;">[Upload CSV]</button>
-        <span class="badge safe" style="font-size:10px;">LIVE • FastAPI</span>
+        <span class="badge operational" style="font-size:10px;">LIVE • CONNECTED</span>
         <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
           <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Lot:</span>
           <select class="select" id="lotSel" style="min-width:170px;font-size:12px;padding:4px 8px;">
@@ -460,10 +590,10 @@
         </div>
         <div style="display:flex;gap:8px;">
           <a class="btn ghost" href="component-detail.html?comp=${encodeURIComponent(cid)}&lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
-            Full Telemetry →
+            Component Inspector →
           </a>
-          <a class="btn ghost" href="predictions.html?comp=${encodeURIComponent(cid)}&lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
-            AI Predictions →
+          <a class="btn ghost" href="lot-analytics.html?lot=${encodeURIComponent(lid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
+            Lot Overview →
           </a>
           <a class="btn ghost" href="reports.html?comp=${encodeURIComponent(cid)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
             Audit Report →
@@ -471,6 +601,15 @@
         </div>
       </div>
     `;
+
+    const lotSublink = document.getElementById("burnInLotLink");
+    if (lotSublink) {
+      lotSublink.href = `lot-analytics.html?lot=${encodeURIComponent(lid)}`;
+    }
+    const detailSublink = document.getElementById("burnInDetailLink");
+    if (detailSublink) {
+      detailSublink.href = `component-detail.html?comp=${encodeURIComponent(cid)}&lot=${encodeURIComponent(lid)}`;
+    }
 
     // 2. Burn-In KPI Row (6 Cards)
     const latestStr = latestActual != null ? `${fmt(latestActual.value, 3)} µA` : "—";
@@ -494,7 +633,7 @@
         <div class="kpi-sub">${latestSub}</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Predicted Vth @168h</div>
+        <div class="kpi-label">Predicted Leakage @168h</div>
         <div class="kpi-value" style="color:var(--gold);">${pred168 != null ? `${fmt(pred168, 3)} µA` : '—'}</div>
         <div class="kpi-sub">ML degradation forecast</div>
       </div>
@@ -530,6 +669,7 @@
       // Series 1: Actual Measurements
       const actualPts = actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
       series.push({
+        label: "Measured Telemetry",
         points: actualPts,
         color: actualColor,
         dashed: false,
@@ -543,6 +683,7 @@
           ...predicted.map((p) => ({ x: p.time, y: p.value, forecast: true })),
         ];
         series.push({
+          label: "168h Forecast",
           points: predPts,
           color: window.SAGE.COLORS.gold,
           dashed: true,
@@ -554,6 +695,7 @@
         const minX = Math.min(...actual.map((p) => p.time));
         const maxX = 168;
         series.push({
+          label: "Datasheet Safety Limit",
           points: [
             { x: minX, y: safetyLimit, forecast: false },
             { x: maxX, y: safetyLimit, forecast: false },
@@ -566,6 +708,8 @@
       charts.lineChart(chartCanvas, series, {
         height: 260,
         xTick: (x) => `${x}h`,
+        yUnit: "µA",
+        xUnit: "h",
       });
 
       const firstAct = actual[0];
@@ -576,7 +720,7 @@
         <span class="item"><span class="dot ${dotFor(decision)}"></span> Leakage: Measured Telemetry (0h: ${fmt(firstAct.value, 3)} → ${lastAct.time}h: ${fmt(lastAct.value, 3)} µA)</span>
         ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted Leakage @168h (${fmt(lastPred.value, 3)} µA)</span>` : ""}
         ${safetyLimit != null ? `<span class="item" style="color:var(--reject);">Leakage Safety Limit: ${fmt(safetyLimit, 3)} µA</span>` : ""}
-        <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(cid)}/trajectory</span>
+        <span class="item" style="color:var(--steel-dim);">Telemetry: Component Trajectory Stream</span>
       `;
     } else {
       chartCanvas.style.display = "none";

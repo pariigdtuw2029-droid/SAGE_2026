@@ -35,10 +35,12 @@ statistical fallback (lot z-score + early-drift slope extrapolation) so
 ingestion never hard-fails.
 """
 
+import hashlib
 import json
+from pathlib import Path
 import re
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -117,6 +119,41 @@ def _first_existing(*names: str):
 def artifact_dir() -> str:
     """Directory the artifacts are resolved from (`backend/models`, or $SAGE_MODEL_DIR)."""
     return str(_artifact_path("").resolve())
+
+
+def compute_file_sha256(path: Union[str, Path]) -> str:
+    """
+    Compute lowercase hexadecimal SHA-256 hash of a file on disk in binary chunks.
+    Raises FileNotFoundError if the file does not exist.
+    """
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"Artifact not found: {p}")
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest().lower()
+
+
+def get_active_artifact_hashes() -> Dict[str, str]:
+    """
+    Compute and return SHA-256 hashes of the four active model/config artifacts:
+    1. anomaly_pipeline.joblib
+    2. drift_prediction_models.joblib
+    3. anomaly_shap_bundle.joblib
+    4. config.json
+    """
+    artifacts = {
+        "anomaly_pipeline.joblib": _first_existing(ANOMALY_ARTIFACT, ANOMALY_ARTIFACT_LEGACY),
+        "drift_prediction_models.joblib": _first_existing(DRIFT_ARTIFACT, DRIFT_ARTIFACT_LEGACY),
+        "anomaly_shap_bundle.joblib": _artifact_path(SHAP_BUNDLE_ARTIFACT),
+        "config.json": _artifact_path(CONFIG_ARTIFACT),
+    }
+    hashes = {}
+    for key, path in artifacts.items():
+        hashes[key] = compute_file_sha256(path)
+    return hashes
 
 
 def describe_stack() -> dict:
@@ -703,16 +740,40 @@ def parse_shap_features(text: Optional[str]) -> List[Tuple[str, float]]:
 
 
 # ---------------------------------------------------------------------------
-# Explanations
-# ---------------------------------------------------------------------------
-
-def build_explanations(row: pd.Series) -> List[Tuple[str, str, Optional[float]]]:
+class ExplanationTuple(tuple):
     """
-    Build explanation rows (feature, contribution, reason) for one component,
+    Richer explanation tuple preserving backward compatibility with 3-tuple unpacking
+    (feature, contribution, reason) while carrying module and evidence_type metadata
+    both as attributes (.module, .evidence_type) and as extended indices ([3], [4]).
+    """
+    def __new__(cls, feature, contribution, reason, module=None, evidence_type=None):
+        return super().__new__(cls, (feature, contribution, reason))
+
+    def __init__(self, feature, contribution, reason, module=None, evidence_type=None):
+        self.feature = feature
+        self.contribution = contribution
+        self.reason = reason
+        self.module = module
+        self.evidence_type = evidence_type
+
+    def __getitem__(self, index):
+        if index == 3:
+            return self.module
+        elif index == 4:
+            return self.evidence_type
+        return super().__getitem__(index)
+
+
+def build_explanations(
+    row: pd.Series,
+    module_b_status: Optional[str] = None,
+) -> List[ExplanationTuple]:
+    """
+    Build explanation rows (feature, contribution, reason, module, evidence_type) for one component,
     using the same physics framing as the reliability notebook plus its SHAP
     attributions when they were computed.
     """
-    out: List[Tuple[str, str, Optional[float]]] = []
+    out: List[ExplanationTuple] = []
     stress = str(row.get("Proxy_Stress", "")).strip()
     expected_param = STRESS_PHYSICS.get(stress)
 
@@ -728,55 +789,84 @@ def build_explanations(row: pd.Series) -> List[Tuple[str, str, Optional[float]]]
             note = " (expected stress response)"
         elif abs(pct) > 5:
             note = " — atypical for this stress, worth a second look"
-        out.append((m, round(pct, 1), f"{m} moved {pct:+.1f}% in the first 24h under {stress}{note}."))
+        out.append(ExplanationTuple(
+            m, round(pct, 1),
+            f"{m} moved {pct:+.1f}% in the first 24h under {stress}{note}.",
+            "MODULE_A", "DRIFT",
+        ))
 
     # SHAP attributions from the anomaly module (Module A's portable bundle).
     for feature, contribution in parse_shap_features(row.get("SHAP_Top_Anomaly_Features")):
-        out.append((
+        out.append(ExplanationTuple(
             feature, contribution,
-            f"Anomaly score driven mainly by {feature} ({contribution:+.2f} SHAP).",
+            f"Anomaly score influenced by {feature} ({contribution:+.2f} SHAP attribution).",
+            "MODULE_A", "SHAP",
         ))
 
     # SHAP attributions from the drift module (Module B's stack).
     for feature, contribution in parse_shap_features(row.get("SHAP_Top_Drift_Features")):
         metric = str(row.get("Dominant_Drift_Metric") or "").strip()
         where = f"predicted {metric} 168h drift" if metric else "168h drift forecast"
-        out.append((
+        out.append(ExplanationTuple(
             feature, contribution,
-            f"{where} driven mainly by {feature} ({contribution:+.3f} SHAP).",
+            f"{where} influenced by {feature} ({contribution:+.3f} SHAP attribution).",
+            "MODULE_B", "SHAP",
         ))
 
     # Lot-relative outlier signal from Module A.
     z = row.get("Worst_Lot_Zscore")
     if z is not None and not pd.isna(z):
-        out.append(("Lot_Relative", round(float(z), 2),
-                    f"Batch-relative outlier (z={float(z):.2f} vs its own lot)."))
+        out.append(ExplanationTuple(
+            "Lot_Relative", round(float(z), 2),
+            f"Batch-relative outlier (z={float(z):.2f} vs its own lot).",
+            "MODULE_A", "DRIFT",
+        ))
 
     # Absolute spec check.
     if int(row.get("Absolute_Spec_Fail", 0) or 0) == 1:
-        out.append(("Traditional_Test_Result", 1.0,
-                    "Failed traditional fixed-limit spec check."))
+        out.append(ExplanationTuple(
+            "Traditional_Test_Result", 1.0,
+            "Failed traditional fixed-limit spec check.",
+            "MODULE_C", "RULE",
+        ))
 
     # Safety-slope early rejection (new in the v5.1 stack).
     if _is_flagged(row.get("Slope_Reject_Flag")):
-        out.append(("Slope_Reject_Flag", 1.0,
-                    "Predicted 168h drift rate exceeds the Safe-population safety slope — "
-                    "flagged for early rejection."))
+        out.append(ExplanationTuple(
+            "Slope_Reject_Flag", 1.0,
+            "Predicted 168h drift rate exceeds the Safe-population safety slope — "
+            "flagged for early rejection.",
+            "MODULE_B", "RULE",
+        ))
 
     # Forecast signal from Module B.
-    pds = row.get("Predicted_Drift_Score")
-    if pds is not None and not pd.isna(pds):
-        out.append(("Predicted_Drift", round(float(pds), 1),
-                    "Forecast to 168h shows continued significant drift."))
+    b_status = (module_b_status or str(row.get("module_b_status") or row.get("Module_B_Status") or "")).strip().lower()
+    if b_status == "degraded":
+        out.append(ExplanationTuple(
+            "Predicted_Drift", None,
+            "Module B drift estimation is degraded; a reliable 168h drift forecast is unavailable.",
+            "MODULE_B", "FALLBACK",
+        ))
+    else:
+        pds = row.get("Predicted_Drift_Score")
+        if pds is not None and not pd.isna(pds):
+            out.append(ExplanationTuple(
+                "Predicted_Drift", round(float(pds), 1),
+                "Forecast to 168h shows continued significant drift.",
+                "MODULE_B", "DRIFT",
+            ))
 
-    us = row.get("Uncertainty_Score")
-    if us is not None and not pd.isna(us):
-        out.append(("Uncertainty", round(float(us), 1),
-                    "Forecast confidence is low (wide interval and/or RF/GB disagreement) — "
-                    "recommend extended monitoring rather than trusting the point estimate."))
+        us = row.get("Uncertainty_Score")
+        if us is not None and not pd.isna(us):
+            out.append(ExplanationTuple(
+                "Uncertainty", round(float(us), 1),
+                "Forecast confidence is low (wide interval and/or RF/GB disagreement) — "
+                "recommend extended monitoring rather than trusting the point estimate.",
+                "MODULE_B", "DRIFT",
+            ))
 
     if not out:
-        out.append(("Summary", None, "No significant deviation detected."))
+        out.append(ExplanationTuple("Summary", None, "No significant deviation detected.", "MODULE_C", "RULE"))
     return out
 
 
@@ -917,21 +1007,27 @@ def run_inference(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, List[str]]:
     warnings: List[str] = []
     df = df.copy()
     anomaly_ok = True
+    module_a_status = "loaded"
+    module_b_status = "loaded"
+    module_c_status = "active"
 
     # Module A — anomaly risk + decision
     try:
         pipeline = load_anomaly_pipeline()
         anomaly_df = pipeline.predict(df)
         anomaly_df["model_version"] = MODEL_VERSION
+        module_a_status = "loaded"
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Module A unavailable ({exc}); using statistical fallback.")
         anomaly_df = fallback_scores(df)
         anomaly_ok = False
+        module_a_status = "fallback"
 
     # Module B — 168h forecast
     try:
         drift, drift_warnings = run_module_b(df)
         warnings.extend(drift_warnings)
+        module_b_status = "loaded"
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Module B unavailable ({exc}); skipping drift forecast.")
         drift = pd.DataFrame({
@@ -940,14 +1036,23 @@ def run_inference(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, List[str]]:
             "Uncertainty_Score": 0.0,
             "Slope_Reject_Flag": False,
         })
+        module_b_status = "degraded"
 
     merged = compute_reliability(anomaly_df, drift)
+    module_c_status = "active"
     merged["risk_level"] = merged["reliability_tier"].map(_risk_level_from_tier)
     # Map QA decision labels to the API vocabulary (already PASS/MONITOR/HOLD/REJECT).
     merged["decision"] = merged["QA_Decision"].astype(str).str.strip()
     merged["confidence"] = merged["confidence"].fillna(0.5)
 
     _attach_explainability(merged, df, warnings)
+
+    # Attach Phase 17 runtime module statuses safely to DataFrame attrs
+    merged.attrs["trace_info"] = {
+        "module_a_status": module_a_status,
+        "module_b_status": module_b_status,
+        "module_c_status": module_c_status,
+    }
 
     # The stored stamp reflects Module A, which owns the decision. A partial
     # degradation (Module B only) is reported through `warnings` instead.

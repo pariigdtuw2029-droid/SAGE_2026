@@ -14,12 +14,41 @@ from app.api.health import router as health_router
 from app.api.lots import router as lots_router
 from app.api.components import router as components_router
 from app.api.alerts import router as alerts_router
+from app.api.system import router as system_router
+from app.api.auth import router as auth_router
 
 logger = logging.getLogger("sage")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate required security configuration
+    from app.core.security import validate_security_config
+    validate_security_config()
+
+    try:
+        from app.services.auth_service import init_auth_db
+        init_auth_db()
+    except Exception as e:
+        logger.warning("Auth DB startup initialization notice: %s", e)
+
+    try:
+        from app.services.audit_service import init_audit_db
+        init_audit_db()
+    except Exception as e:
+        logger.warning("Audit DB startup initialization notice: %s", e)
+
+    try:
+        from app.services.review_service import init_reviews_db
+        init_reviews_db()
+    except Exception as e:
+        logger.warning("Reviews DB startup initialization notice: %s", e)
+
+    try:
+        from database.crud import init_inference_db
+        init_inference_db()
+    except Exception as e:
+        logger.warning("Inference DB startup initialization notice: %s", e)
     logger.info("SAGE API startup complete (v1.0.0)")
     yield
     logger.info("SAGE API shutdown complete")
@@ -76,6 +105,12 @@ app.include_router(components_router)
 
 # Alerts route
 app.include_router(alerts_router)
+
+# System routes
+app.include_router(system_router)
+
+# Authentication routes
+app.include_router(auth_router)
 
 
 # --- Serve the Frontend from the same app (one public URL) ---

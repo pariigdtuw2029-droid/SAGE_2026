@@ -8,6 +8,66 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared.css" />
+<style>
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
+  }
+  aside.sidebar,
+  div.console-top,
+  nav.subnav-bar,
+  div.grid-2,
+  div.console-actions,
+  div#reportSummary a.btn,
+  h2.box-title {
+    display: none !important;
+  }
+  body,
+  div.shell,
+  main.console,
+  section.box {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  #reportSummary {
+    display: block !important;
+    margin-bottom: 12px !important;
+  }
+  #reportSummary > div {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+  }
+  #reportSummary .badge {
+    border: 1px solid #94a3b8 !important;
+    color: #0f172a !important;
+    background: #ffffff !important;
+    font-weight: 600 !important;
+  }
+  .report-preview {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 4px !important;
+    padding: 12px !important;
+    font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    page-break-inside: auto !important;
+  }
+}
+</style>
 </head>
 <body>
 <div class="shell">
@@ -15,6 +75,16 @@
 
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
+
+    <!-- Group 4: Reports & System Configuration Sub-Navigation Ribbon -->
+    <!-- Task-Oriented Navigation Ribbon -->
+    <nav class="subnav-bar">
+      <span class="subnav-badge">05 // Inspection Reports</span>
+      <a class="subnav-tab active" href="reports.html">05 Engineering Screening Reports</a>
+      <a class="subnav-tab" href="settings.html">06 System Diagnostics &amp; Settings →</a>
+      <a class="subnav-tab" href="component-detail.html">← Component Inspector</a>
+      <a class="subnav-tab" href="lot-analytics.html">← Lot Overview</a>
+    </nav>
 
     <div class="grid-2">
       <section class="box">
@@ -58,7 +128,7 @@
   const { topbar, renderSidebar, toast, param, dotFor, badge } = window.SAGE;
 
   renderSidebar("reports.html");
-  topbar("Reports", null, null, `<span class="box-sub" style="margin:0;">GET /api/components/{id}/report — audit-ready qualification output</span>`);
+  topbar("Reports", null, null, `<span class="box-sub" style="margin:0;">Engineering Screening &amp; Risk Assessment Report</span>`);
 
   let last = "";
 
@@ -87,11 +157,30 @@
   const subject = document.getElementById("subject");
   const summaryEl = document.getElementById("reportSummary");
 
+  let activeReportComponentId = null;
+  let activeReportLotId = null;
+
   function syncSubject() {
     subject.style.display = typeSel.value === "alerts" ? "none" : "";
-    subject.placeholder = typeSel.value === "lot"
-      ? "Lot ID e.g. ISRO-SCL-250113-02"
-      : "Component ID e.g. C504 or C501";
+    if (typeSel.value === "lot") {
+      subject.placeholder = "Lot ID e.g. ISRO-SCL-250113-02";
+      if (/^C\d+/i.test(subject.value.trim())) {
+        if (activeReportLotId && activeReportComponentId && subject.value.trim().toUpperCase() === activeReportComponentId.toUpperCase()) {
+          subject.value = activeReportLotId;
+        } else {
+          subject.value = "";
+        }
+      }
+    } else if (typeSel.value === "component") {
+      subject.placeholder = "Component ID e.g. C504 or C501";
+      if (/^ISRO/i.test(subject.value.trim())) {
+        if (activeReportComponentId && activeReportLotId && subject.value.trim().toUpperCase() === activeReportLotId.toUpperCase()) {
+          subject.value = activeReportComponentId;
+        } else {
+          subject.value = "";
+        }
+      }
+    }
   }
   typeSel.addEventListener("change", syncSubject);
   syncSubject();
@@ -106,7 +195,7 @@
 
   async function generateComponentReport(cid) {
     summaryEl.style.display = "none";
-    document.getElementById("preview").textContent = `Fetching audit report for ${cid} from FastAPI backend...`;
+    document.getElementById("preview").textContent = `Generating qualification engineering report for ${cid}...`;
 
     let res, compRes;
     try {
@@ -120,7 +209,7 @@
         "=".repeat(60),
         "STATUS: BACKEND CONNECTION FAILED",
         "",
-        `Unable to reach FastAPI backend at ${window.SAGEAPI.getBaseUrl()}.`,
+        `Unable to reach SAGE backend service at ${window.SAGEAPI.getBaseUrl()}.`,
         "Please ensure the backend server is running on port 8000.",
         "=".repeat(60),
       ].join("\n");
@@ -167,12 +256,15 @@
     const r = res.data;
     const comp = (compRes.ok && compRes.data) ? compRes.data : {};
 
+    activeReportComponentId = r.component_id || cid;
+    activeReportLotId = r.lot_id || comp.lot_id || null;
+
     // Harmonized data
     const split = comp.split || r.split || "train";
     const status = comp.status || r.status || "SCREENED";
     const modelVer = r.model_version || comp.model_version || "sage-1.1";
-    const riskScore = r.risk_score != null ? r.risk_score : comp.risk_score;
-    const riskLevel = comp.risk_level || (riskScore >= 80 ? "CRITICAL" : riskScore >= 60 ? "HIGH" : riskScore >= 30 ? "MEDIUM" : "LOW");
+    const riskScore = r.risk_score != null ? r.risk_score : (comp.risk_score != null ? comp.risk_score : 0);
+    const riskLevel = comp.risk_level || (riskScore >= 65 ? "HIGH" : riskScore >= 21.8 ? "MEDIUM" : "LOW");
     const decision = r.decision || comp.decision || "—";
     const conf = r.confidence ?? comp.confidence;
     const tier = r.reliability_tier || comp.reliability_tier || "Borderline";
@@ -186,13 +278,46 @@
     const intHigh = r.interval_high;
     const intervalStr = (intLow != null && intHigh != null) ? `${fmt(intLow, 4)} — ${fmt(intHigh, 4)}` : "—";
 
-    // Format structured explanations
+    // Format structured explanations grouped by Module A, B, C & Historical
     let explanationsBlock = "";
     if (r.explanations && Array.isArray(r.explanations) && r.explanations.length > 0) {
-      explanationsBlock = r.explanations.map((exp, i) => {
-        const contribStr = exp.contribution != null ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`) : "";
-        return `  ${i + 1}. [Feature: ${exp.feature}] ${contribStr ? `(Contribution: ${contribStr}) ` : ""}— ${exp.reason}`;
-      }).join("\n");
+      const groups = [
+        { code: "6A", key: "MODULE_A", title: "Module A — Anomaly Evidence", items: [] },
+        { code: "6B", key: "MODULE_B", title: "Module B — Drift Evidence", items: [] },
+        { code: "6C", key: "MODULE_C", title: "Module C — Risk & Safety Evidence", items: [] },
+        { code: "6D", key: "HISTORICAL", title: "Historical / Unattributed Evidence", items: [] },
+      ];
+
+      r.explanations.forEach((exp) => {
+        const mod = (exp.module || "").toUpperCase();
+        if (mod === "MODULE_A") {
+          groups[0].items.push(exp);
+        } else if (mod === "MODULE_B") {
+          groups[1].items.push(exp);
+        } else if (mod === "MODULE_C") {
+          groups[2].items.push(exp);
+        } else {
+          groups[3].items.push(exp);
+        }
+      });
+
+      const blocks = [];
+      groups.forEach((g) => {
+        if (g.items.length === 0) return;
+        const groupLines = [
+          `  ${g.code}. ${g.title.toUpperCase()}`,
+          `  ${"-".repeat(64)}`,
+        ];
+        g.items.forEach((exp, i) => {
+          const contribStr = exp.contribution != null ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`) : "";
+          const typeStr = exp.evidence_type ? `[${exp.evidence_type}] ` : "";
+          const fallbackTag = (exp.module === "MODULE_B" && exp.evidence_type === "FALLBACK") ? " [DEGRADED/FALLBACK]" : "";
+          const runStr = exp.run_id ? ` (Run: ${exp.run_id.slice(0, 12)}...)` : "";
+          groupLines.push(`    ${i + 1}. ${typeStr}${fallbackTag}[Feature: ${exp.feature}] ${contribStr ? `(Contribution: ${contribStr}) ` : ""}— ${exp.reason}${runStr}`);
+        });
+        blocks.push(groupLines.join("\n"));
+      });
+      explanationsBlock = blocks.length > 0 ? blocks.join("\n\n") : "  • No structured explanation items available.";
     } else {
       explanationsBlock = "  • No structured explanation items available.";
     }
@@ -225,14 +350,81 @@
       ].join("\n");
     }
 
+    // Area A: Human Engineering Disposition & Review History
+    const currentDisp = r.current_disposition || null;
+    const totalReviews = r.total_reviews || (r.reviews ? r.reviews.length : 0);
+    const reviewsList = r.reviews || [];
+
+    let humanReviewBlock = "";
+    if (reviewsList && reviewsList.length > 0) {
+      const latest = reviewsList[0];
+      const note = latest.comment ? latest.comment : "(No engineering note entered)";
+      const recordedTime = latest.created_at ? new Date(latest.created_at).toISOString().replace("T", " ").slice(0, 19) + " UTC" : "—";
+      const lines = [
+        `  Current Disposition : ${latest.disposition}`,
+        `  Latest Reviewer     : ${latest.username} (${latest.role})`,
+        `  Recorded At         : ${recordedTime}`,
+        `  Engineering Note    : ${note}`,
+      ];
+      if (reviewsList.length > 1) {
+        lines.push(`  Prior Review History (${reviewsList.length - 1} earlier record${reviewsList.length > 2 ? 's' : ''}):`);
+        reviewsList.slice(1).forEach((rev) => {
+          const revDate = rev.created_at ? new Date(rev.created_at).toISOString().replace("T", " ").slice(0, 16) : "—";
+          const revNote = rev.comment ? ` — "${rev.comment}"` : "";
+          lines.push(`    • [Rev #${rev.id}] ${revDate} UTC | ${rev.disposition} by ${rev.username} (${rev.role})${revNote}`);
+        });
+      }
+      humanReviewBlock = lines.join("\n");
+    } else {
+      humanReviewBlock = "  Status: NO HUMAN DISPOSITION RECORDED — Pending engineering review.";
+    }
+
+    // Area B: Inference Traceability & Model Provenance
+    const trace = r.inference_trace;
+    let provenanceBlock = "";
+    if (trace) {
+      const runId = trace.run_id || r.inference_run_id || "—";
+      const runTime = trace.timestamp ? new Date(trace.timestamp).toISOString().replace("T", " ").slice(0, 19) + " UTC" : "—";
+      const execStatus = trace.execution_status || "—";
+      const modA = trace.module_a_status || "—";
+      const modB = trace.module_b_status || "—";
+      const modC = trace.module_c_status || "—";
+      const fallbackStr = trace.is_fallback ? "ACTIVE (statistical fallback active)" : "Not active (nominal ML stack)";
+      const srcFile = trace.source_filename || "—";
+      const totalComps = trace.total_components != null ? trace.total_components : "—";
+
+      const hashes = trace.artifact_hashes || {};
+      const pPipeHash = hashes["anomaly_pipeline.joblib"] || "—";
+      const pDriftHash = hashes["drift_prediction_models.joblib"] || "—";
+      const pShapHash = hashes["anomaly_shap_bundle.joblib"] || "—";
+      const pCfgHash = trace.config_hash || hashes["config.json"] || "—";
+
+      provenanceBlock = [
+        `  Inference Run UUID  : ${runId}`,
+        `  Inference Timestamp : ${runTime}`,
+        `  Execution Status    : ${execStatus}`,
+        `  Module Status       : Module A: ${modA} | Module B: ${modB} | Module C: ${modC}`,
+        `  Statistical Fallback: ${fallbackStr}`,
+        `  Source Batch File   : ${srcFile}`,
+        `  Components in Run   : ${totalComps}`,
+        `  Active Artifact Hashes (SHA-256):`,
+        `    • anomaly_pipeline.joblib     : ${pPipeHash}`,
+        `    • drift_prediction_models.joblib: ${pDriftHash}`,
+        `    • anomaly_shap_bundle.joblib  : ${pShapHash}`,
+        `    • config.json                 : ${pCfgHash}`,
+      ].join("\n");
+    } else {
+      provenanceBlock = "  Status: HISTORICAL RECORD — No active inference execution trace or cryptographic artifact hashes are linked to this record.";
+    }
+
     const text = [
       "====================================================================",
-      "SAGE COMPONENT SCREENING & QUALIFICATION REPORT",
+      "SAGE COMPONENT SCREENING & RISK ASSESSMENT REPORT",
       "====================================================================",
       `Report ID          : RPT-${r.component_id}-${Date.now().toString(36).toUpperCase()}`,
       `Timestamp          : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
-      `Facility           : Semi-Conductor Laboratory (SCL), ISRO`,
-      `Inspection System  : SAGE ML Inference Core (${modelVer})`,
+      `Facility           : Semiconductor Test & Burn-In Screening Facility`,
+      `Screening Engine   : SAGE ML Screening & Drift Inference Core (${modelVer})`,
       "",
       "1. COMPONENT IDENTIFICATION",
       "-".repeat(68),
@@ -270,12 +462,12 @@
       `  Worst Parameter Z-Score    : ${fmt(r.worst_lot_zscore, 2)} (relative to lot baseline)`,
       `  Absolute Spec Violation    : ${r.absolute_spec_fail === 1 ? "VIOLATION (1) — Datasheet limit exceeded" : "No violation detected (0)"}`,
       "",
-      "5. SPACE RELIABILITY EVALUATION",
+      "5. SPACE RELIABILITY ASSESSMENT",
       "-".repeat(68),
       `  Space Reliability Index    : ${fmt(relIndex)} / 100`,
-      `  Qualification Tier         : ${tier}`,
+      `  Reliability Screening Tier : ${tier}`,
       "",
-      "6. MODEL EXPLAINABILITY & FEATURE CONTRIBUTIONS",
+      "6. MODEL EXPLAINABILITY & EVIDENCE",
       "-".repeat(68),
       explanationsBlock,
       "",
@@ -283,8 +475,24 @@
       "-".repeat(68),
       reasonsBlock,
       "",
+      "8. HUMAN ENGINEERING DISPOSITION & REVIEW HISTORY",
+      "-".repeat(68),
+      humanReviewBlock,
+      "",
+      "9. INFERENCE TRACEABILITY & MODEL PROVENANCE",
+      "-".repeat(68),
+      provenanceBlock,
+      "",
       "====================================================================",
-      "AUTHENTIC VERIFICATION: Generated from real FastAPI backend and database records.",
+      "DECISION SUPPORT NOTICE & REGULATORY DISCLAIMER",
+      "====================================================================",
+      "This report provides AI-assisted early screening, trajectory drift",
+      "forecasting, and latent defect risk assessment prior to 168h completion.",
+      "It does NOT constitute autonomous flight qualification, certification,",
+      "or guarantee of component life. Final disposition, screening sign-off,",
+      "and flight qualification authority remain the sole responsibility of",
+      "the cognizant component reliability engineer.",
+      "AUTHENTICITY: Backed by authoritative SAGE database & inference traces.",
       "====================================================================",
     ].join("\n");
 
@@ -294,6 +502,13 @@
     // Render Executive Visual Summary Bar
     const decClass = decision.toLowerCase();
     const tierClass = tier === "Space-Safe" ? "safe" : tier === "High-Risk" ? "reject" : "monitor";
+    const dispClass = currentDisp ? (currentDisp === "PASS" ? "safe" : currentDisp === "QUARANTINE" ? "reject" : "monitor") : "neutral";
+    const dispBadge = currentDisp
+      ? `<span class="badge ${dispClass}">Review: ${escapeHtml(currentDisp)}</span>`
+      : `<span class="badge neutral">Review: Pending</span>`;
+    const runBadge = (r.inference_run_id || (trace && trace.run_id))
+      ? `<span class="badge neutral" style="font-size:10px;">Run: ${escapeHtml((r.inference_run_id || trace.run_id).slice(0, 12))}...</span>`
+      : "";
 
     summaryEl.style.display = "block";
     summaryEl.innerHTML = `
@@ -301,12 +516,14 @@
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
           <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--signal);">${escapeHtml(r.component_id)}</span>
           <a class="backlink" href="lot-detail.html?lot=${encodeURIComponent(r.lot_id)}" style="font-size:11px;padding:3px 8px;">Lot: ${escapeHtml(r.lot_id)}</a>
-          <span class="badge ${decClass}">${escapeHtml(decision)}</span>
+          <span class="badge ${decClass}">AI: ${escapeHtml(decision)}</span>
+          ${dispBadge}
           <span class="badge ${tierClass}">${escapeHtml(tier)}</span>
           <span class="badge neutral">Risk: ${fmt(riskScore)}</span>
           <span class="badge neutral">Drift: ${fmt(driftScore)}</span>
           <span class="badge neutral">Pred 168h: ${fmt(pred168, 3)}</span>
           <span class="badge neutral">Rel: ${fmt(relIndex)}</span>
+          ${runBadge}
         </div>
         <div>
           <a class="btn ghost" href="component-detail.html?comp=${encodeURIComponent(r.component_id)}" style="font-size:11px;padding:5px 12px;text-decoration:none;">
@@ -321,12 +538,49 @@
   }
 
   async function generateLotReport(lid) {
+    const rawId = (lid || "").trim();
+    let resolvedLotId = rawId;
+
+    if (!resolvedLotId) {
+      toast("Please enter a valid Lot ID.");
+      document.getElementById("preview").textContent = [
+        "SAGE LOT INSPECTION REPORT — ERROR",
+        "=".repeat(60),
+        "STATUS: INPUT REQUIRED",
+        "",
+        "Please enter a valid Lot ID (e.g. ISRO-SCL-250113-02).",
+        "=".repeat(60),
+      ].join("\n");
+      return;
+    }
+
+    if (/^C\d+/i.test(resolvedLotId)) {
+      if (activeReportComponentId && resolvedLotId.toUpperCase() === activeReportComponentId.toUpperCase() && activeReportLotId) {
+        toast(`Component ${resolvedLotId} belongs to Lot ${activeReportLotId}. Generating Lot Report.`);
+        resolvedLotId = activeReportLotId;
+        subject.value = activeReportLotId;
+      } else {
+        toast(`"${resolvedLotId}" is a component ID, not a Lot ID. Please enter a valid Lot ID.`);
+        document.getElementById("preview").textContent = [
+          "SAGE LOT INSPECTION REPORT — ERROR",
+          "=".repeat(60),
+          "STATUS: INVALID LOT IDENTIFIER",
+          "",
+          `"${resolvedLotId}" is a component ID, not a Lot ID.`,
+          "To inspect this component, select 'Component Qualification Report'.",
+          "To generate a lot audit, enter a valid lot identifier (e.g. ISRO-SCL-250113-02).",
+          "=".repeat(60),
+        ].join("\n");
+        return;
+      }
+    }
+
     summaryEl.style.display = "none";
-    document.getElementById("preview").textContent = `Fetching lot summary for ${lid}...`;
+    document.getElementById("preview").textContent = `Fetching lot summary for ${resolvedLotId}...`;
 
     let res;
     try {
-      res = await window.SAGEAPI.getLotSummary(lid);
+      res = await window.SAGEAPI.getLotSummary(resolvedLotId);
     } catch (err) {
       document.getElementById("preview").textContent = `Error: Unable to reach backend at ${window.SAGEAPI.getBaseUrl()}`;
       toast("Connection failed");
@@ -339,24 +593,25 @@
         "=".repeat(60),
         `STATUS: ${res.status === 404 ? '404 NOT FOUND' : 'ERROR'}`,
         "",
-        `Lot "${lid}" was not found in the database.`,
+        `Lot "${resolvedLotId}" was not found in the database.`,
         "Verified real database lots include: ISRO-SCL-250113-02, ISRO-SCL-250421-16, etc.",
         "=".repeat(60),
       ].join("\n");
       document.getElementById("preview").textContent = errText;
       last = errText;
-      toast(`Lot ${lid} not found`);
+      toast(`Lot ${resolvedLotId} not found`);
       return;
     }
 
     const s = res.data;
+    activeReportLotId = s.lot_id || resolvedLotId;
     const text = [
       "====================================================================",
-      "SAGE LOT QUALIFICATION SUMMARY REPORT",
+      "SAGE LOT SCREENING SUMMARY REPORT",
       "====================================================================",
       `Lot Identifier     : ${s.lot_id}`,
       `Generated At       : ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
-      `Facility           : Semi-Conductor Laboratory (SCL), ISRO`,
+      `Facility           : Semiconductor Test & Burn-In Screening Facility`,
       "",
       "1. LOT POPULATION METRICS",
       "-".repeat(68),
@@ -372,7 +627,7 @@
       `  REJECT           : ${s.reject}`,
       "",
       "====================================================================",
-      "Source: GET /api/lots/{lot_id}/summary",
+      "Source: SAGE Lot Screening Summary Engine",
       "====================================================================",
     ].join("\n");
 
@@ -435,7 +690,7 @@
         }),
         "",
         "====================================================================",
-        "Source: GET /api/alerts",
+        "Source: SAGE High-Risk Screening Alert Feed",
         "====================================================================",
       ].join("\n");
     }
@@ -452,8 +707,7 @@
       const cid = (val || "C504").toUpperCase();
       generateComponentReport(cid);
     } else if (typeSel.value === "lot") {
-      const lid = (val || "ISRO-SCL-250113-02").toUpperCase();
-      generateLotReport(lid);
+      generateLotReport(val);
     } else if (typeSel.value === "alerts") {
       generateAlertsDigest();
     }
@@ -478,11 +732,21 @@
 
   // Initial load: prioritize URL query parameter
   (function init() {
-    const urlId = (param("comp") || param("id") || "").trim().toUpperCase();
-    if (urlId) {
-      subject.value = urlId;
-      generateComponentReport(urlId);
+    const urlLot = (param("lot") || param("lot_id") || "").trim();
+    const urlComp = (param("comp") || param("id") || "").trim().toUpperCase();
+    if (urlLot) {
+      typeSel.value = "lot";
+      syncSubject();
+      subject.value = urlLot;
+      generateLotReport(urlLot);
+    } else if (urlComp) {
+      typeSel.value = "component";
+      syncSubject();
+      subject.value = urlComp;
+      generateComponentReport(urlComp);
     } else {
+      typeSel.value = "component";
+      syncSubject();
       subject.value = "C504"; // Flagship real database component
       generateComponentReport("C504");
     }

@@ -32,3 +32,8 @@ python-dotenv==1.0.1
 # Only needed for `python -m database ingest <csv> --explain N` (SHAP).
 # The ingestion path runs without it and skips the attribution pass.
 shap>=0.44
+
+# --- Phase 12: Authentication layer (JWT + password hashing) ---
+pyjwt>=2.8.0
+bcrypt>=4.0.0
+

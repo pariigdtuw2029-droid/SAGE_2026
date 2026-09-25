@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Component Analysis — SAGE</title>
+<title>Component Inspector — SAGE</title>
 <link rel="icon" href="../assets/brand/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -21,18 +21,56 @@
 
     <!-- Main analysis view -->
     <div id="analysisView">
+      <!-- Task-Oriented Navigation Ribbon -->
+      <nav class="subnav-bar">
+        <span class="subnav-badge">03 // Component Inspector</span>
+        <a class="subnav-tab" href="components.html" id="subnavCompDb">← Component Database</a>
+        <a class="subnav-tab active" href="component-detail.html" id="subnavCompDetail">Component Telemetry &amp; Diagnostics</a>
+        <a class="subnav-tab" href="lot-analytics.html" id="subnavLotLink">Lot Overview</a>
+        <a class="subnav-tab" href="reports.html" id="subnavReportLink">Inspection Report</a>
+      </nav>
+
+      <!-- Meta header & Decision row -->
       <section class="box">
         <div id="metaHeader" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);">
           <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;" id="metaPills"></div>
           <div id="reportAction"></div>
         </div>
-        <h2 class="box-title">Screening & ML Status</h2>
+        <h2 class="box-title">Screening &amp; ML Status</h2>
         <div class="kpi-row" id="statusRow" style="margin-bottom:0;"></div>
+      </section>
+
+      <!-- Engineering Review & Human Disposition Workflow -->
+      <section class="box" id="reviewSection" style="border-top:2px solid var(--sky);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line);">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <h2 class="box-title" style="margin-bottom:0;">Engineering Review &amp; Disposition</h2>
+              <span class="badge neutral" style="font-size:10px;">HUMAN DISPOSITION</span>
+            </div>
+            <p class="box-sub" style="margin:4px 0 0;">Human sign-off workflow. ML screening decision and risk scores remain immutable audit records.</p>
+          </div>
+          <div id="currentDispPill"></div>
+        </div>
+
+        <!-- Current disposition summary banner -->
+        <div id="currentDispBanner" style="margin-bottom:16px;"></div>
+
+        <!-- Action form (role-gated: admin & engineer only) -->
+        <div id="reviewActionArea" style="margin-bottom:18px;"></div>
+
+        <!-- Historical reviews timeline -->
+        <div>
+          <h3 style="font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--steel);text-transform:uppercase;margin:0 0 10px;">
+            Append-Only Review History (<span id="reviewHistCount">0</span>)
+          </h3>
+          <div id="reviewHistoryWrap"></div>
+        </div>
       </section>
 
       <div class="grid-2">
         <section class="box">
-          <h2 class="box-title">168h Forecast & Uncertainty</h2>
+          <h2 class="box-title">168h Forecast &amp; Uncertainty</h2>
           <div class="kpi-row" id="forecastKpis" style="margin-bottom:14px;grid-template-columns:1fr 1fr;"></div>
           <div id="forecastDetails" style="font-family:var(--mono);font-size:12px;color:var(--steel);line-height:1.7;"></div>
         </section>
@@ -44,12 +82,47 @@
         </section>
       </div>
 
+      <!-- Trajectory & Parameter Drift Chart -->
       <section class="box">
-        <h2 class="box-title">Parameter Drift Chart</h2>
-        <p class="box-sub">Leakage current (µA) · Solid = measured checkpoints (0h, 24h, 96h, 168h) · Ringed = forecast trajectory</p>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h2 class="box-title">Parameter Drift &amp; Forecast Trajectory</h2>
+            <p class="box-sub">Leakage current (µA) · Solid = measured checkpoints (0h, 24h, 96h, 168h) · Dashed gold = forecast trajectory with 90% conformal band</p>
+          </div>
+          <span class="badge safe" style="font-size:10px;">TELEMETRY ACTIVE</span>
+        </div>
         <canvas class="chart" id="driftChart"></canvas>
         <div class="legend" id="driftLegend"></div>
       </section>
+
+      <!-- Checkpoint Telemetry Table & Lot Context -->
+      <div class="grid-2">
+        <section class="box">
+          <h2 class="box-title">Burn-In Telemetry Checkpoints</h2>
+          <p class="box-sub">Measured values from real test telemetry and forecast delta</p>
+          <div class="table-wrap">
+            <table class="data" id="cpTable">
+              <thead>
+                <tr>
+                  <th>Checkpoint</th>
+                  <th>Type</th>
+                  <th>Value</th>
+                  <th>Drift from 0h</th>
+                  <th>Limit</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="box">
+          <h2 class="box-title" id="lotContextTitle">Lot Screening Context</h2>
+          <p class="box-sub">Parent lot qualification summary from live database</p>
+          <div id="lotContextBody" style="margin-top:12px;"></div>
+        </section>
+      </div>
 
       <section class="box">
         <h2 class="box-title">Risk Breakdown <span style="color:var(--steel-dim);text-transform:none;">(Anomaly + Drift + Uncertainty)</span></h2>
@@ -57,9 +130,16 @@
       </section>
 
       <section class="box">
-        <h2 class="box-title">Why This Component Was Flagged <span style="color:var(--steel-dim);text-transform:none;">(Model Explainability & Feature Contributions)</span></h2>
+        <h2 class="box-title">Why This Component Was Flagged <span style="color:var(--steel-dim);text-transform:none;">(Model Explainability &amp; Feature Contributions)</span></h2>
         <div id="expCards" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:12px;margin-bottom:16px;"></div>
         <ul class="exp-list" id="expList"></ul>
+      </section>
+
+      <!-- SAGE ML Inference Core Architecture -->
+      <section class="box">
+        <h2 class="box-title">SAGE ML Inference Core Architecture</h2>
+        <p class="box-sub">Multi-module screening and forecast pipeline powering real-time evaluations</p>
+        <div class="grid-3" id="modelCards" style="margin-top:14px;"></div>
       </section>
     </div>
   </main>
@@ -70,12 +150,15 @@
 <script>
   const { charts, topbar, renderSidebar, param, dotFor, badge } = window.SAGE;
 
-  renderSidebar("components.html");
+  renderSidebar("component-detail.html");
 
   const rawParam = param("comp") || param("id");
   const defaultDemoId = "C504"; // Flagship real database component
   const id = (rawParam ? rawParam.trim() : defaultDemoId).toUpperCase();
   const backLot = param("lot");
+
+  let allLots = [];
+  let lotComponents = [];
 
   function fmt(val, digits = 1) {
     if (val == null || isNaN(val)) return "—";
@@ -171,7 +254,7 @@
       id: comp.component_id,
       lotId: comp.lot_id,
       status: comp.status || "Screened",
-      risk_level: comp.risk_level || (rep.risk_score >= 80 ? "CRITICAL" : rep.risk_score >= 60 ? "HIGH" : rep.risk_score >= 30 ? "MEDIUM" : "LOW"),
+      risk_level: comp.risk_level || (rep.risk_score >= 65 ? "HIGH" : rep.risk_score >= 21.8 ? "MEDIUM" : "LOW"),
       decision: comp.decision || rep.decision || "—",
       confidence: comp.confidence ?? rep.confidence,
       slope_reject_flag: Boolean(comp.slope_reject_flag ?? rep.slope_reject_flag),
@@ -191,16 +274,157 @@
       absolute_spec_fail: rep.absolute_spec_fail,
       model_version: comp.model_version || rep.model_version || "—",
       split: comp.split || "—",
+      inference_run_id: comp.inference_run_id || rep.inference_run_id || null,
+      inference_trace: comp.inference_trace || rep.inference_trace || null,
       explanations: (rep.explanations && Array.isArray(rep.explanations)) ? rep.explanations : [],
       reasons: (rep.reasons && Array.isArray(rep.reasons)) ? rep.reasons : [],
     };
 
     const fromLot = backLot && backLot === c.lotId ? backLot : c.lotId;
+
+    // Load Lots & Components for Quick Switcher in Topbar
+    try {
+      const [lotsRes, compsRes, lotSummaryRes] = await Promise.all([
+        window.SAGEAPI.getLots(),
+        (c.lotId && c.lotId !== c.id) ? window.SAGEAPI.getLotComponents(c.lotId) : Promise.resolve({ ok: false }),
+        (c.lotId && c.lotId !== c.id) ? window.SAGEAPI.getLotSummary(c.lotId) : Promise.resolve({ ok: false }),
+      ]);
+      if (lotsRes.ok && lotsRes.data) {
+        allLots = Array.isArray(lotsRes.data) ? lotsRes.data : (lotsRes.data.value || []);
+      }
+      if (compsRes.ok && compsRes.data) {
+        lotComponents = Array.isArray(compsRes.data) ? compsRes.data : (compsRes.data.value || []);
+      }
+
+      // Render Parent Lot Screening Context Box
+      document.getElementById("lotContextTitle").textContent = `Lot Screening Context (${c.lotId})`;
+      if (lotSummaryRes.ok && lotSummaryRes.data) {
+        const ls = lotSummaryRes.data;
+        document.getElementById("lotContextBody").innerHTML = `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div class="kpi" style="padding:10px 12px;">
+              <div class="kpi-label">Lot Population</div>
+              <div class="kpi-value" style="font-size:18px;">${ls.total_components}</div>
+              <div class="kpi-sub">total components</div>
+            </div>
+            <div class="kpi" style="padding:10px 12px;">
+              <div class="kpi-label">Mean Anomaly</div>
+              <div class="kpi-value" style="font-size:18px;color:var(--sky);">${fmt(ls.average_anomaly_score)}</div>
+              <div class="kpi-sub">Module A batch score</div>
+            </div>
+          </div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--steel);line-height:1.7;">
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+              <span>Passed Screening:</span>
+              <span style="color:var(--safe);">${ls.passed}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+              <span>Monitor Classification:</span>
+              <span style="color:var(--monitor);">${ls.monitor}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+              <span>Hold Quarantine:</span>
+              <span style="color:var(--hold);">${ls.hold}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
+              <span>Rejections:</span>
+              <span style="color:var(--reject);">${ls.reject}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;">
+              <span>High-Risk Count:</span>
+              <span style="color:var(--signal);">${ls.high_risk_components}</span>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding:10px 12px;background:rgba(147,166,184,0.06);border:1px solid var(--line);border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--steel-dim);line-height:1.5;">
+            ℹ Telemetry and risk scoring reflect real test bench measurements for component ${c.id} inside lot ${c.lotId}.
+          </div>
+        `;
+      } else {
+        document.getElementById("lotContextBody").innerHTML = `
+          <div style="font-family:var(--mono);font-size:12px;color:var(--steel-dim);padding:14px;text-align:center;">
+            Lot screening context not available for ${escapeHtml(c.lotId)}.
+          </div>
+        `;
+      }
+    } catch (e) {
+      console.warn("Could not load switcher lots", e);
+    }
+
+    // Topbar Actions (Quick-Switcher)
+    const lotOptions = (allLots.length > 0 ? allLots : [{ lot_id: c.lotId }]).map((l) => {
+      const lid = l.lot_id || l;
+      return `<option value="${escapeHtml(lid)}" ${lid === c.lotId ? 'selected' : ''}>${escapeHtml(lid)}</option>`;
+    }).join("");
+
+    const compOptions = (lotComponents.length > 0 ? lotComponents : [{ component_id: c.id, decision: c.decision }]).map((compItem) => {
+      const cid = compItem.component_id;
+      return `<option value="${escapeHtml(cid)}" ${cid === c.id ? 'selected' : ''}>${escapeHtml(cid)} (${escapeHtml(compItem.decision || '—')})</option>`;
+    }).join("");
+
+    const actionsHtml = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="badge operational" style="font-size:10px;">LIVE TELEMETRY</span>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Lot:</span>
+          <select class="select" id="topbarLotSel" style="font-size:12px;padding:4px 8px;min-width:140px;">
+            ${lotOptions}
+          </select>
+        </label>
+        <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;text-transform:none;margin:0;">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Part:</span>
+          <select class="select" id="topbarCompSel" style="font-size:12px;padding:4px 8px;min-width:140px;">
+            ${compOptions}
+          </select>
+        </label>
+        <input type="text" id="topbarSearch" class="input" placeholder="Search ID..." style="width:100px;font-size:12px;padding:4px 8px;" />
+      </div>
+    `;
+
     topbar(
       `Component ${escapeHtml(c.id)} <span class="badge safe" style="margin-left:8px;font-size:10px;vertical-align:middle;">LIVE API</span>`,
-      fromLot ? `lot-detail.html?lot=${encodeURIComponent(fromLot)}` : "components.html",
-      fromLot ? `Back to ${fromLot}` : "Back to Components"
+      fromLot ? `lot-analytics.html?lot=${encodeURIComponent(fromLot)}` : "components.html",
+      fromLot ? `Back to Lot Overview` : "Back to Components",
+      actionsHtml
     );
+
+    // Bind Quick Switcher
+    const topLotSel = document.getElementById("topbarLotSel");
+    if (topLotSel) {
+      topLotSel.addEventListener("change", async (e) => {
+        const newLot = e.target.value;
+        const comps = await window.SAGEAPI.getLotComponents(newLot);
+        const compList = (comps.ok && comps.data) ? (Array.isArray(comps.data) ? comps.data : (comps.data.value || [])) : [];
+        if (compList.length > 0) {
+          window.location.href = `component-detail.html?comp=${encodeURIComponent(compList[0].component_id)}&lot=${encodeURIComponent(newLot)}`;
+        } else {
+          window.location.href = `lot-analytics.html?lot=${encodeURIComponent(newLot)}`;
+        }
+      });
+    }
+
+    const topCompSel = document.getElementById("topbarCompSel");
+    if (topCompSel) {
+      topCompSel.addEventListener("change", (e) => {
+        window.location.href = `component-detail.html?comp=${encodeURIComponent(e.target.value)}&lot=${encodeURIComponent(c.lotId)}`;
+      });
+    }
+
+    const topSearch = document.getElementById("topbarSearch");
+    if (topSearch) {
+      topSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && topSearch.value.trim()) {
+          window.location.href = `component-detail.html?comp=${encodeURIComponent(topSearch.value.trim().toUpperCase())}&lot=${encodeURIComponent(c.lotId)}`;
+        }
+      });
+    }
+
+    // Subnav bar links
+    const subLotLink = document.getElementById("subnavLotLink");
+    if (subLotLink) subLotLink.href = `lot-analytics.html?lot=${encodeURIComponent(c.lotId)}`;
+    const subReportLink = document.getElementById("subnavReportLink");
+    if (subReportLink) subReportLink.href = `reports.html?comp=${encodeURIComponent(c.id)}`;
+    const subCompDetail = document.getElementById("subnavCompDetail");
+    if (subCompDetail) subCompDetail.href = `component-detail.html?comp=${encodeURIComponent(c.id)}&lot=${encodeURIComponent(c.lotId)}`;
 
     // Meta pills header
     const decClass = (c.decision || "").toLowerCase();
@@ -209,11 +433,12 @@
 
     document.getElementById("metaPills").innerHTML = `
       <span style="font-family:var(--mono);font-size:12px;color:var(--steel);margin-right:4px;">Lot:</span>
-      <a class="backlink" href="lot-detail.html?lot=${encodeURIComponent(c.lotId)}" style="font-size:11px;padding:3px 10px;">${escapeHtml(c.lotId)}</a>
+      <a class="backlink" href="lot-analytics.html?lot=${encodeURIComponent(c.lotId)}" style="font-size:11px;padding:3px 10px;">${escapeHtml(c.lotId)}</a>
       <span class="badge ${decClass}">${escapeHtml(c.decision)}</span>
       <span class="badge ${tierClass}">${escapeHtml(c.reliability_tier)}</span>
       <span class="badge neutral">Risk: ${escapeHtml(c.risk_level)}</span>
       ${c.model_version !== "—" ? `<span class="badge neutral">Model: ${escapeHtml(c.model_version)}</span>` : ""}
+      ${c.inference_run_id ? `<span class="badge neutral" title="Phase 17 Inference Run: ${escapeHtml(c.inference_run_id)}">Run: ${escapeHtml(c.inference_run_id.slice(0, 16))}…</span>` : ""}
       ${c.split !== "—" ? `<span class="badge neutral">Split: ${escapeHtml(c.split)}</span>` : ""}
       ${c.slope_reject_flag ? `<span class="badge reject" title="Flagged by early slope-rejection safety rule">SLOPE REJECT</span>` : ""}
     `;
@@ -228,9 +453,9 @@
     const kpis = [
       ["Risk Score", fmt(c.risk_score), `<span class="dot ${dotFor(c.decision)}"></span>`, `level: ${escapeHtml(c.risk_level)}`],
       ["Decision", escapeHtml(c.decision), c.slope_reject_flag ? `<span class="badge reject" style="font-size:9px;">SLOPE</span>` : "", `conf: ${fmtPct(c.confidence)}`],
-      ["Anomaly Score", fmt(c.anomaly_score), "", "isolation metric"],
-      ["Current Drift — Tracked Parameter", fmt(c.drift_score), "", "measured parameter drift"],
-      ["Predicted @168h — Vth", fmt(c.predicted_168h, 3), "", "168h Vth prediction"],
+      ["Anomaly Score", fmt(c.anomaly_score), "", "Module A isolation metric"],
+      ["Current Drift", fmt(c.drift_score), "", "measured early drift"],
+      ["Predicted @168h", fmt(c.predicted_168h, 3), "", "Module B forecast"],
       ["Reliability Index", fmt(c.reliability_index), `<span class="dot ${tierDot}"></span>`, `tier: ${escapeHtml(c.reliability_tier)}`],
       ["Forecast Uncertainty", fmt(c.uncertainty_score), "", "conformal interval width"],
     ];
@@ -265,8 +490,8 @@
 
     document.getElementById("forecastDetails").innerHTML = `
       <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
-        <span>Conformal Prediction Interval:</span>
-        <span style="color:var(--signal);">${intervalStr}</span>
+        <span>Conformal Prediction Interval (90%):</span>
+        <span style="color:var(--signal);font-weight:600;">${intervalStr}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line);">
         <span>Forecast Uncertainty Score:</span>
@@ -311,30 +536,97 @@
       </div>
     `;
 
-    // Trajectory / parameter chart
-    if (liveTraj && Array.isArray(liveTraj.actual) && liveTraj.actual.length > 0) {
-      document.getElementById("driftChart").style.display = "block";
-      const actualPts = liveTraj.actual.map((p) => ({ x: p.time, y: p.value, forecast: false }));
-      const predPts = (liveTraj.predicted || []).map((p) => ({ x: p.time, y: p.value, forecast: true }));
-      const allPts = [...actualPts, ...predPts];
+    // Trajectory / parameter chart & Checkpoint Table
+    const actualPts = (liveTraj && Array.isArray(liveTraj.actual)) ? liveTraj.actual.map((p) => ({ x: p.time, y: p.value, forecast: false })) : [];
+    const predPts = (liveTraj && Array.isArray(liveTraj.predicted)) ? liveTraj.predicted.map((p) => ({ x: p.time, y: p.value, forecast: true })) : [];
+    const v0 = actualPts.length > 0 ? actualPts[0].y : null;
+    const safetyLimit = liveTraj ? liveTraj.safety_limit : null;
 
-      charts.lineChart(document.getElementById("driftChart"), [
-        { points: allPts, color: c.decision === "REJECT" ? window.SAGE.COLORS.reject : window.SAGE.COLORS.sky },
-      ], {
+    if (actualPts.length > 0) {
+      document.getElementById("driftChart").style.display = "block";
+      const series = [
+        { label: "Measured Telemetry", points: actualPts, color: c.decision === "REJECT" ? window.SAGE.COLORS.reject : window.SAGE.COLORS.sky },
+      ];
+      if (predPts.length > 0) {
+        series.push({
+          label: "168h Degradation Forecast",
+          points: [{ x: actualPts[actualPts.length - 1].x, y: actualPts[actualPts.length - 1].y, forecast: false }, ...predPts],
+          color: window.SAGE.COLORS.gold,
+          dashed: true,
+        });
+      }
+      if (safetyLimit != null) {
+        series.push({
+          label: "Datasheet Safety Limit",
+          points: [{ x: 0, y: safetyLimit, forecast: false }, { x: 168, y: safetyLimit, forecast: false }],
+          color: window.SAGE.COLORS.reject,
+          dashed: true,
+        });
+      }
+
+      charts.lineChart(document.getElementById("driftChart"), series, {
         height: 250,
         xTick: (x) => `${x}h`,
+        yUnit: "µA",
+        xUnit: "h",
+        conformalInterval: (c.interval_low != null && c.interval_high != null) ? { x: 168, low: c.interval_low, high: c.interval_high } : null,
       });
 
       const lastActual = actualPts[actualPts.length - 1];
       const lastPred = predPts.length ? predPts[predPts.length - 1] : null;
       document.getElementById("driftLegend").innerHTML = `
-        <span class="item"><span class="dot ${dotFor(c.decision)}"></span> Measured (${actualPts[0].x}h: ${actualPts[0].y} → ${lastActual.x}h: ${lastActual.y} µA)</span>
+        <span class="item"><span class="dot ${dotFor(c.decision)}"></span> Measured (${actualPts[0].x}h: ${fmt(actualPts[0].y, 3)} → ${lastActual.x}h: ${fmt(lastActual.y, 3)} µA)</span>
         ${lastPred ? `<span class="item"><span class="dot hold"></span> Predicted Leakage @168h (${fmt(lastPred.y, 3)} µA)</span>` : ""}
-        ${liveTraj.safety_limit ? `<span class="item" style="color:var(--steel-dim);">Leakage Safety Limit: ${liveTraj.safety_limit} µA</span>` : ""}
-        <span class="item" style="color:var(--steel-dim);">Source: GET /api/components/${encodeURIComponent(c.id)}/trajectory</span>`;
+        ${safetyLimit != null ? `<span class="item" style="color:var(--steel-dim);">Leakage Safety Limit: ${safetyLimit} µA</span>` : ""}
+        <span class="item" style="color:var(--steel-dim);">Telemetry: Component Trajectory Stream</span>`;
     } else {
       document.getElementById("driftChart").style.display = "none";
       document.getElementById("driftLegend").innerHTML = `<span style="color:var(--steel-dim);font-family:var(--mono);">No trajectory points stored for ${escapeHtml(c.id)}.</span>`;
+    }
+
+    // Populate Checkpoint Telemetry Table
+    const tbody = document.querySelector("#cpTable tbody");
+    const cpRows = [];
+
+    actualPts.forEach((pt) => {
+      const delta = (v0 != null && v0 !== 0) ? ((pt.y - v0) / Math.abs(v0)) * 100 : 0;
+      const isOverLimit = safetyLimit != null && pt.y > safetyLimit;
+      cpRows.push({
+        h: `${pt.x}h`,
+        type: "Measured Checkpoint",
+        val: `${fmt(pt.y, 3)} µA`,
+        drift: pt.x === 0 ? "Baseline (0%)" : `${delta > 0 ? '+' : ''}${fmt(delta, 1)}%`,
+        limit: safetyLimit != null ? `${safetyLimit} µA` : "—",
+        status: isOverLimit ? `<span class="badge reject">EXCEEDED</span>` : `<span class="badge safe">IN-SPEC</span>`,
+      });
+    });
+
+    predPts.forEach((pt) => {
+      const delta = (v0 != null && v0 !== 0) ? ((pt.y - v0) / Math.abs(v0)) * 100 : 0;
+      const isOverLimit = safetyLimit != null && pt.y > safetyLimit;
+      cpRows.push({
+        h: `${pt.x}h`,
+        type: "ML Forecast (168h)",
+        val: `${fmt(pt.y, 3)} µA`,
+        drift: `${delta > 0 ? '+' : ''}${fmt(delta, 1)}%`,
+        limit: safetyLimit != null ? `${safetyLimit} µA` : "—",
+        status: isOverLimit ? `<span class="badge reject">PRED EXCEEDED</span>` : `<span class="badge monitor">FORECAST</span>`,
+      });
+    });
+
+    if (cpRows.length > 0) {
+      tbody.innerHTML = cpRows.map((r) => `
+        <tr>
+          <td><b>${r.h}</b></td>
+          <td style="color:var(--steel);">${r.type}</td>
+          <td style="font-family:var(--mono);color:var(--frost);">${r.val}</td>
+          <td style="font-family:var(--mono);">${r.drift}</td>
+          <td style="color:var(--steel);">${r.limit}</td>
+          <td>${r.status}</td>
+        </tr>
+      `).join("");
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--steel-dim);">No checkpoint measurements available.</td></tr>`;
     }
 
     // Risk bars (real ML metrics)
@@ -342,31 +634,83 @@
       { label: "Anomaly Score", value: c.anomaly_score != null ? c.anomaly_score : 0, color: window.SAGE.COLORS.sky },
       { label: "Current Drift", value: c.drift_score != null ? c.drift_score : 0, color: window.SAGE.COLORS.gold },
       { label: "Uncertainty",   value: c.uncertainty_score != null ? c.uncertainty_score : 0, color: window.SAGE.COLORS.steel },
-      { label: "Risk Score",    value: c.risk_score != null ? c.risk_score : 0, color: c.risk_score >= 60 ? window.SAGE.COLORS.reject : c.risk_score >= 30 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
+      { label: "Risk Score",    value: c.risk_score != null ? c.risk_score : 0, color: c.risk_score >= 65 ? window.SAGE.COLORS.reject : c.risk_score >= 21.8 ? window.SAGE.COLORS.monitor : window.SAGE.COLORS.safe },
     ];
     charts.hbarChart(document.getElementById("riskBars"), riskBarsData, { height: 190 });
 
-    // Explanations Section: Render structured explanations dynamically
+    // Explanations Section: Render structured explanations grouped by Module A, B, C & Historical
     const cardsContainer = document.getElementById("expCards");
     if (c.explanations && c.explanations.length > 0) {
-      cardsContainer.innerHTML = c.explanations.map((exp) => {
-        const feat = escapeHtml(exp.feature || "Feature");
-        const reason = escapeHtml(exp.reason || "Attribution reason");
-        const contrib = exp.contribution != null
-          ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`)
-          : null;
-        return `
-          <div style="background:rgba(13,22,36,0.8);border:1px solid var(--line-strong);border-radius:10px;padding:12px 14px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span class="badge neutral" style="font-size:10px;text-transform:uppercase;">${feat}</span>
-              ${contrib ? `<span style="font-family:var(--mono);font-weight:600;color:var(--sky);font-size:12px;">${contrib}</span>` : ""}
-            </div>
-            <div style="font-family:var(--mono);font-size:11.5px;color:var(--frost);line-height:1.4;">
-              ${reason}
-            </div>
+      const groups = [
+        { key: "MODULE_A", title: "MODULE A — ANOMALY EVIDENCE", items: [] },
+        { key: "MODULE_B", title: "MODULE B — DRIFT EVIDENCE", items: [] },
+        { key: "MODULE_C", title: "MODULE C — RISK & SAFETY EVIDENCE", items: [] },
+        { key: "HISTORICAL", title: "Historical / Unattributed Evidence", items: [] },
+      ];
+
+      c.explanations.forEach((exp) => {
+        const mod = (exp.module || "").toUpperCase();
+        if (mod === "MODULE_A") {
+          groups[0].items.push(exp);
+        } else if (mod === "MODULE_B") {
+          groups[1].items.push(exp);
+        } else if (mod === "MODULE_C") {
+          groups[2].items.push(exp);
+        } else {
+          groups[3].items.push(exp);
+        }
+      });
+
+      let html = "";
+      groups.forEach((g) => {
+        if (g.items.length === 0) return;
+        html += `
+          <div style="grid-column:1/-1;margin-top:10px;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
+            <span style="font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${g.key === 'HISTORICAL' ? 'var(--steel)' : 'var(--sky)'};">${g.title}</span>
+            <span class="badge neutral" style="font-size:9px;">${g.items.length} ITEM${g.items.length > 1 ? 'S' : ''}</span>
           </div>
         `;
-      }).join("");
+        g.items.forEach((exp) => {
+          const feat = escapeHtml(exp.feature || "Feature");
+          const reason = escapeHtml(exp.reason || "Attribution reason");
+          const contrib = exp.contribution != null
+            ? (exp.contribution > 0 ? `+${exp.contribution}` : `${exp.contribution}`)
+            : null;
+          let evBadge = "";
+          if (exp.evidence_type) {
+            const et = String(exp.evidence_type).toUpperCase();
+            if (et === "FALLBACK") {
+              evBadge = `<span class="badge reject" style="font-size:9px;">FALLBACK</span>`;
+            } else if (et === "SHAP") {
+              evBadge = `<span class="badge safe" style="font-size:9px;">SHAP</span>`;
+            } else if (et === "DRIFT") {
+              evBadge = `<span class="badge monitor" style="font-size:9px;">DRIFT</span>`;
+            } else if (et === "RULE") {
+              evBadge = `<span class="badge neutral" style="font-size:9px;">RULE</span>`;
+            } else {
+              evBadge = `<span class="badge neutral" style="font-size:9px;">${escapeHtml(et)}</span>`;
+            }
+          }
+          const runStr = exp.run_id ? `<div style="font-family:var(--mono);font-size:9px;color:var(--steel-dim);margin-top:6px;">Run: ${escapeHtml(exp.run_id)}</div>` : "";
+
+          html += `
+            <div style="background:rgba(13,22,36,0.85);border:1px solid var(--line-strong);border-radius:10px;padding:12px 14px;box-shadow:inset 0 1px 0 rgba(238,243,247,0.04);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="badge neutral" style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">${feat}</span>
+                  ${evBadge}
+                </div>
+                ${contrib ? `<span style="font-family:var(--mono);font-weight:600;color:${Number(exp.contribution) > 0 ? 'var(--hold)' : 'var(--safe)'};font-size:12px;">${contrib}</span>` : ""}
+              </div>
+              <div style="font-family:var(--mono);font-size:11.5px;color:var(--frost);line-height:1.45;">
+                ${reason}
+              </div>
+              ${runStr}
+            </div>
+          `;
+        });
+      });
+      cardsContainer.innerHTML = html;
     } else {
       cardsContainer.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--steel-dim);grid-column:1/-1;">No structured explanation items available.</div>`;
     }
@@ -377,6 +721,266 @@
       ul.innerHTML = c.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
     } else {
       ul.innerHTML = `<li class="ok">All measurements nominal and within expected population drift envelope.</li>`;
+    }
+
+    // Model Architecture Cards (Authoritative SAGE 3-Module Stack)
+    document.getElementById("modelCards").innerHTML = `
+      <div class="box" style="margin:0;">
+        <div class="box-title">Module A — Early Anomaly Screening</div>
+        <p class="box-sub" style="margin:0 0 10px;">Isolation Forest (trained on 24h burn-in telemetry) combined with robust lot-relative z-scoring and slope-rejection safety gating.</p>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <span class="badge neutral">Model: ${escapeHtml(c.model_version)}</span>
+          <span class="badge neutral">Score: ${fmt(c.anomaly_score)}</span>
+          ${c.inference_trace ? `<span class="badge ${c.inference_trace.module_a_status === "loaded" ? "safe" : "reject"}">Module A: ${escapeHtml(c.inference_trace.module_a_status)}</span>` : ""}
+        </div>
+      </div>
+      <div class="box" style="margin:0;">
+        <div class="box-title">Module B — 168h Degradation Forecast</div>
+        <p class="box-sub" style="margin:0 0 10px;">Ensemble Gradient Boosting and Random Forest regression predicting 168h parameter drift with 90% conformal intervals.</p>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <span class="badge neutral">Forecast: ${fmt(c.predicted_168h, 3)} µA</span>
+          <span class="badge neutral">Uncertainty: ${fmt(c.uncertainty_score)}</span>
+          ${c.inference_trace ? `<span class="badge ${c.inference_trace.module_b_status === "loaded" ? "safe" : "monitor"}">Module B: ${escapeHtml(c.inference_trace.module_b_status)}</span>` : ""}
+        </div>
+      </div>
+      <div class="box" style="margin:0;">
+        <div class="box-title">Module C — Reliability &amp; Risk Fusion</div>
+        <p class="box-sub" style="margin:0 0 10px;">Production-calibrated risk weighting (0.278 Anomaly + 0.670 Forecast Drift + 0.052 Uncertainty) mapping to Space-Safe, Borderline, or High-Risk.</p>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <span class="badge neutral">Risk Score: ${fmt(c.risk_score)}</span>
+          <span class="badge ${tierClass}">Tier: ${escapeHtml(c.reliability_tier)}</span>
+          ${c.inference_trace ? `<span class="badge safe">Module C: ${escapeHtml(c.inference_trace.module_c_status)}</span>` : ""}
+        </div>
+      </div>
+    `;
+
+    // Render Engineering Review section
+    await renderEngineeringReviews(c);
+  }
+
+  async function renderEngineeringReviews(c) {
+    const compId = c.id;
+    const bannerEl = document.getElementById("currentDispBanner");
+    const pillEl = document.getElementById("currentDispPill");
+    const actionEl = document.getElementById("reviewActionArea");
+    const histWrapEl = document.getElementById("reviewHistoryWrap");
+    const histCountEl = document.getElementById("reviewHistCount");
+
+    if (!bannerEl || !actionEl || !histWrapEl) return;
+
+    let res;
+    try {
+      res = await window.SAGEAPI.getComponentReviews(compId);
+    } catch (err) {
+      console.error("Failed to load component reviews:", err);
+      bannerEl.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--reject);">Unable to load review history: ${escapeHtml(err.message || String(err))}</div>`;
+      return;
+    }
+
+    // Role detection
+    const isAuth = typeof window.SAGEAPI.isAuthenticated === "function" && window.SAGEAPI.isAuthenticated();
+    const user = (typeof window.SAGEAPI.getUser === "function") ? window.SAGEAPI.getUser() : null;
+    const role = (typeof window.SAGEAPI.getUserRole === "function") ? window.SAGEAPI.getUserRole() : null;
+    const userRoleStr = (role || "").toLowerCase();
+    const canReview = isAuth && (userRoleStr === "admin" || userRoleStr === "engineer");
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        pillEl.innerHTML = `<span class="badge neutral" style="font-size:11px;">AUTH REQUIRED</span>`;
+        bannerEl.innerHTML = `
+          <div style="padding:14px;background:rgba(201,168,106,0.08);border:1px solid rgba(201,168,106,0.25);border-radius:8px;font-family:var(--mono);font-size:12px;color:var(--gold);">
+            🔒 Review history requires authentication. Please <a href="login.html" style="color:var(--sky);text-decoration:underline;">sign in</a> to view or submit engineering reviews.
+          </div>`;
+        actionEl.innerHTML = "";
+        histWrapEl.innerHTML = "";
+        return;
+      }
+      bannerEl.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--reject);">Failed to fetch review data (${res.status}): ${escapeHtml(res.error || "Unknown error")}</div>`;
+      return;
+    }
+
+    const data = res.data || {};
+    const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+    const currentDisp = data.current_disposition || null;
+    if (histCountEl) histCountEl.textContent = String(reviews.length);
+
+    // 1. Current Disposition Banner & Pill
+    if (!currentDisp || reviews.length === 0) {
+      pillEl.innerHTML = `<span class="badge neutral" style="font-size:11px;">NOT YET REVIEWED</span>`;
+      bannerEl.innerHTML = `
+        <div style="padding:14px 16px;background:rgba(13,22,36,0.7);border:1px solid var(--line);border-left:4px solid var(--steel-dim);border-radius:8px;">
+          <div style="font-family:var(--mono);font-size:12.5px;color:var(--frost);font-weight:500;">
+            No human engineering disposition recorded yet for ${escapeHtml(compId)}.
+          </div>
+          <div style="font-family:var(--mono);font-size:11.5px;color:var(--steel);margin-top:4px;">
+            Screening is currently governed solely by the automated ML screening baseline (<code>${escapeHtml(c.decision)}</code>). Awaiting human review sign-off.
+          </div>
+        </div>`;
+    } else {
+      const latest = reviews[0];
+      const dispClass = currentDisp === "PASS" ? "safe" : currentDisp === "HOLD" ? "hold" : "reject";
+      const borderAccent = currentDisp === "PASS" ? "var(--safe)" : currentDisp === "HOLD" ? "var(--hold)" : "var(--reject)";
+      pillEl.innerHTML = `<span class="badge ${dispClass}" style="font-size:11px;font-weight:600;letter-spacing:0.04em;">DISPOSITION: ${escapeHtml(currentDisp)}</span>`;
+      bannerEl.innerHTML = `
+        <div style="padding:14px 16px;background:rgba(13,22,36,0.85);border:1px solid var(--line);border-left:4px solid ${borderAccent};border-radius:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge ${dispClass}" style="font-size:12px;font-weight:600;">${escapeHtml(currentDisp)}</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--frost);">
+                Disposed by <strong>${escapeHtml(latest.username)}</strong>
+                <span class="badge neutral" style="font-size:9.5px;margin-left:4px;">${escapeHtml(latest.role)}</span>
+              </span>
+            </div>
+            <span style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);">
+              ${new Date(latest.created_at).toLocaleString()}
+            </span>
+          </div>
+          ${latest.comment ? `
+            <div style="font-family:var(--mono);font-size:12px;color:var(--frost);margin-top:8px;padding:8px 12px;background:rgba(7,13,24,0.6);border-radius:6px;border:1px solid var(--line-strong);line-height:1.5;">
+              "${escapeHtml(latest.comment)}"
+            </div>` : `
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--steel-dim);font-style:italic;margin-top:4px;">
+              No comments attached to this disposition.
+            </div>`
+          }
+        </div>`;
+    }
+
+    // 2. Action Form (Role-gated)
+    if (canReview) {
+      actionEl.innerHTML = `
+        <form id="dispositionForm" style="background:rgba(13,22,36,0.5);border:1px solid var(--line);border-radius:8px;padding:14px 16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <label style="font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:0.04em;color:var(--frost);text-transform:uppercase;">
+              Record Engineering Disposition
+            </label>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--steel);">Logged in as: <strong>${escapeHtml(user?.username || "engineer")}</strong> (${escapeHtml(userRoleStr)})</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--safe);">
+              <input type="radio" name="dispChoice" value="PASS" checked style="accent-color:var(--safe);" />
+              <strong>PASS</strong> (Cleared for flight batch)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--hold);">
+              <input type="radio" name="dispChoice" value="HOLD" style="accent-color:var(--hold);" />
+              <strong>HOLD</strong> (Hold for re-test / bake)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--reject);">
+              <input type="radio" name="dispChoice" value="QUARANTINE" style="accent-color:var(--reject);" />
+              <strong>QUARANTINE</strong> (Isolation / reject quarantine)
+            </label>
+          </div>
+          <div>
+            <textarea id="dispCommentInput" class="input" rows="2" maxlength="1000" placeholder="Engineering disposition rationale, burn-in observation, or flight clearance notes (max 1000 chars)..." style="width:100%;resize:vertical;font-family:var(--mono);font-size:12px;box-sizing:border-box;margin-bottom:6px;"></textarea>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span id="dispCharCount" style="font-family:var(--mono);font-size:11px;color:var(--steel-dim);">0 / 1000</span>
+              <button type="submit" id="btnSubmitDisp" class="btn" style="padding:6px 16px;font-size:12px;">Submit Disposition</button>
+            </div>
+          </div>
+          <div id="dispFormFeedback" style="margin-top:10px;display:none;font-family:var(--mono);font-size:12px;"></div>
+        </form>`;
+
+      const commentInput = document.getElementById("dispCommentInput");
+      const charCount = document.getElementById("dispCharCount");
+      if (commentInput && charCount) {
+        commentInput.addEventListener("input", () => {
+          charCount.textContent = `${commentInput.value.length} / 1000`;
+        });
+      }
+
+      const form = document.getElementById("dispositionForm");
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const submitBtn = document.getElementById("btnSubmitDisp");
+          const feedback = document.getElementById("dispFormFeedback");
+          const checkedRadio = form.querySelector('input[name="dispChoice"]:checked');
+          const dispVal = checkedRadio ? checkedRadio.value : null;
+          const commentVal = commentInput ? commentInput.value.trim() : "";
+
+          if (!dispVal) {
+            feedback.style.display = "block";
+            feedback.style.color = "var(--reject)";
+            feedback.textContent = "Please select a disposition (PASS, HOLD, or QUARANTINE).";
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Recording...";
+          feedback.style.display = "none";
+
+          try {
+            const subRes = await window.SAGEAPI.submitComponentReview(compId, dispVal, commentVal || null);
+            if (subRes.ok) {
+              if (window.SAGE && typeof window.SAGE.toast === "function") {
+                window.SAGE.toast(`Disposition recorded: ${dispVal}`);
+              }
+              // Immediately refresh review data
+              await renderEngineeringReviews(c);
+            } else {
+              feedback.style.display = "block";
+              feedback.style.color = "var(--reject)";
+              feedback.textContent = `Submission failed (${subRes.status}): ${subRes.error || "Server rejected request."}`;
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Submit Disposition";
+            }
+          } catch (postErr) {
+            feedback.style.display = "block";
+            feedback.style.color = "var(--reject)";
+            feedback.textContent = `Error: ${postErr.message || String(postErr)}`;
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Submit Disposition";
+          }
+        });
+      }
+    } else if (isAuth && userRoleStr === "reviewer") {
+      actionEl.innerHTML = `
+        <div style="padding:12px 16px;background:rgba(143,201,250,0.06);border:1px solid rgba(143,201,250,0.2);border-radius:8px;display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--steel);">
+          <span class="badge neutral" style="font-size:10px;">READ-ONLY</span>
+          <span>Your account is signed in with the <strong>reviewer</strong> role. You have read-only access to review history and audit trails, but cannot submit new dispositions.</span>
+        </div>`;
+    } else {
+      actionEl.innerHTML = `
+        <div style="padding:12px 16px;background:rgba(201,168,106,0.08);border:1px solid rgba(201,168,106,0.25);border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:12px;color:var(--gold);">
+          <span>Sign in as an <strong>engineer</strong> or <strong>admin</strong> to record dispositions for this component.</span>
+          <a href="login.html" class="btn ghost" style="font-size:11px;padding:4px 12px;text-decoration:none;">Sign In →</a>
+        </div>`;
+    }
+
+    // 3. Review History Table
+    if (reviews.length === 0) {
+      histWrapEl.innerHTML = `
+        <div style="font-family:var(--mono);font-size:12px;color:var(--steel-dim);padding:8px 0;">
+          No review records logged in audit trail yet.
+        </div>`;
+    } else {
+      histWrapEl.innerHTML = `
+        <div class="table-wrap">
+          <table class="data" style="font-size:12px;">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Reviewer</th>
+                <th>Role</th>
+                <th>Disposition</th>
+                <th>Engineering Comment</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reviews.map((r) => {
+                const badgeCls = r.disposition === "PASS" ? "safe" : r.disposition === "HOLD" ? "hold" : "reject";
+                return `
+                  <tr>
+                    <td style="font-family:var(--mono);white-space:nowrap;color:var(--steel);">${new Date(r.created_at).toLocaleString()}</td>
+                    <td style="font-family:var(--mono);color:var(--frost);font-weight:500;">${escapeHtml(r.username)}</td>
+                    <td><span class="badge neutral" style="font-size:10px;">${escapeHtml(r.role)}</span></td>
+                    <td><span class="badge ${badgeCls}">${escapeHtml(r.disposition)}</span></td>
+                    <td style="font-family:var(--mono);color:var(--frost);max-width:420px;word-break:break-word;">${r.comment ? escapeHtml(r.comment) : '<span style="color:var(--steel-dim);font-style:italic;">—</span>'}</td>
+                  </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>`;
     }
   }
 

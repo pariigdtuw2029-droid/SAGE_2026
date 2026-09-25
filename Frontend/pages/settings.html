@@ -16,6 +16,99 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
+    <!-- Group 4: Reports & System Configuration Sub-Navigation Ribbon -->
+    <!-- Task-Oriented Navigation Ribbon -->
+    <nav class="subnav-bar">
+      <span class="subnav-badge">06 // System Diagnostics</span>
+      <a class="subnav-tab" href="reports.html">05 Inspection Reports</a>
+      <a class="subnav-tab active" href="settings.html">06 System Diagnostics &amp; Settings</a>
+    </nav>
+
+    <!-- Authoritative Model Performance & Benchmark Metrics -->
+    <section class="box">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+        <div>
+          <h2 class="box-title" style="margin:0;">Authoritative ML Benchmark &amp; Validation Metrics</h2>
+          <p class="box-sub" style="margin-top:4px;">Empirical performance evaluation across train/validation/test splits from production config (sage-1.1)</p>
+        </div>
+        <span class="badge safe" style="font-size:10px;">CONFIG FROZEN</span>
+      </div>
+
+      <div class="kpi-row" style="margin-bottom:16px;">
+        <div class="kpi">
+          <div class="kpi-label">Validation ROC AUC</div>
+          <div class="kpi-value" style="font-size:22px;color:var(--sky);">0.9091</div>
+          <div class="kpi-sub">validation discrimination</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Validation Recall (Fail)</div>
+          <div class="kpi-value" style="font-size:22px;color:var(--safe);">98.1%</div>
+          <div class="kpi-sub">latent defect capture rate</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Test Recall (Fail)</div>
+          <div class="kpi-value" style="font-size:22px;color:var(--safe);">97.4%</div>
+          <div class="kpi-sub">borderline+ test set holdout</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Safe False Alarm Rate</div>
+          <div class="kpi-value" style="font-size:22px;color:var(--gold);">27.5%</div>
+          <div class="kpi-sub">conservative quarantine bias</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Evaluation Parameter</th>
+              <th>Production Value</th>
+              <th>Benchmark Split</th>
+              <th>Operational Function</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ROC AUC</strong></td>
+              <td style="font-family:var(--mono);color:var(--sky);">0.9091</td>
+              <td>Validation Split</td>
+              <td>Overall separation capability between safe and degrading components</td>
+            </tr>
+            <tr>
+              <td><strong>Defect Screening Recall (Validation)</strong></td>
+              <td style="font-family:var(--mono);color:var(--safe);">98.1% (0.981)</td>
+              <td>Validation Split</td>
+              <td>Screening detection rate prior to 168h completion</td>
+            </tr>
+            <tr>
+              <td><strong>Defect Screening Recall (Test Holdout)</strong></td>
+              <td style="font-family:var(--mono);color:var(--safe);">97.4% (0.974)</td>
+              <td>Test Split</td>
+              <td>Generalization recall on unseen test holdout lots (Borderline + High-Risk)</td>
+            </tr>
+            <tr>
+              <td><strong>Safe False Alarm Rate</strong></td>
+              <td style="font-family:var(--mono);color:var(--gold);">27.5% (Val) / 36.7% (Test)</td>
+              <td>Val / Test Split</td>
+              <td>Fraction of safe components sent to non-destructive extended monitoring</td>
+            </tr>
+            <tr>
+              <td><strong>Dirichlet Production Weights</strong></td>
+              <td style="font-family:var(--mono);color:var(--frost);">A: 0.278 / B: 0.670 / Uncertainty: 0.052</td>
+              <td>Runtime Stack</td>
+              <td>Calibrated weighting balancing early anomaly isolation and 168h forecast rate</td>
+            </tr>
+            <tr>
+              <td><strong>Reliability Cutoff Thresholds</strong></td>
+              <td style="font-family:var(--mono);color:var(--frost);">Safe &lt; 21.8 &le; Borderline &lt; 65.0 &le; High-Risk</td>
+              <td>Runtime Stack</td>
+              <td>Multi-tiered classification for qualification decisions (PASS / MONITOR / HOLD / REJECT)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <div class="grid-2">
       <section class="box">
         <h2 class="box-title">Risk Thresholds</h2>
@@ -46,35 +139,158 @@
           </select>
         </label>
         <label class="ctl">Recipients
-          <input class="input" value="qa-team@isro.gov.in" />
+          <input class="input" value="qa-team@screening-lab.org" />
         </label>
       </section>
     </div>
 
-    <section class="box">
-      <h2 class="box-title">Backend Connection</h2>
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr><th>Service</th><th>Endpoint</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>FastAPI server</td><td id="srvUrl">http://127.0.0.1:8000</td><td><span class="badge monitor" id="serverBadge">checking...</span></td></tr>
-            <tr><td>Health check</td><td>GET /health</td><td><span class="badge neutral" id="healthBadge">checking...</span></td></tr>
-            <tr><td>Database</td><td>PostgreSQL via Member-2 layer</td><td><span class="badge safe">schema live</span></td></tr>
-          </tbody>
-        </table>
+    <!-- System Operational Status Console (Phase 8 Integration) -->
+    <section class="box" id="systemStatusSection">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+        <div>
+          <h2 class="box-title" style="margin:0;">System Operational Status</h2>
+          <p class="box-sub" style="margin-top:4px;">Live health telemetry, model stack readiness, and database record diagnostics</p>
+        </div>
+        <div class="console-actions">
+          <button class="btn" id="refreshStatusBtn" title="Refresh system status telemetry">
+            <span id="refreshSpinner" style="display:none; margin-right:6px;">↻</span>Refresh status
+          </button>
+        </div>
       </div>
-      <div class="console-actions" style="margin-top:14px;">
-        <input class="input" id="apiBase" value="http://127.0.0.1:8000" style="min-width:240px;" />
-        <button class="btn" id="testApi">Test connection</button>
+
+      <!-- Loading State -->
+      <div id="statusLoading" style="padding:28px 16px; text-align:center;">
+        <span class="pulse" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--sky); box-shadow:0 0 12px var(--sky); margin-right:8px;"></span>
+        <span style="font-family:var(--mono); font-size:13px; color:var(--steel);">Loading system status telemetry...</span>
       </div>
-      <p class="box-sub" style="margin-top:12px;">When the API is running, this console can be pointed at it — every page mirrors one endpoint (burn-in → /lots, components → /components, reports → /components/{id}/report).</p>
+
+      <!-- Error / Offline State -->
+      <div id="statusError" style="display:none; padding:20px; border:1px solid rgba(248, 113, 113, 0.35); border-radius:12px; background:rgba(248, 113, 113, 0.05); margin-bottom:18px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="font-family:'Space Grotesk', sans-serif; font-size:15px; font-weight:600; color:var(--reject); margin-bottom:4px;">
+              System Status Unavailable
+            </div>
+            <p id="statusErrorMsg" class="box-sub" style="margin:0; color:var(--steel);">Unable to reach the FastAPI backend service at http://127.0.0.1:8000. Ensure the server is online.</p>
+          </div>
+          <button class="btn" id="retryStatusBtn" style="border-color:rgba(248, 113, 113, 0.4);">Retry connection</button>
+        </div>
+      </div>
+
+      <!-- Live Content Container -->
+      <div id="statusContent" style="display:none;">
+        <!-- Group 1: High-Level System Status Cards -->
+        <div class="kpi-row" style="margin-bottom:20px;">
+          <div class="kpi">
+            <div class="kpi-label">Overall Health</div>
+            <div class="kpi-value" id="kpiOverallStatus" style="font-size:22px;">—</div>
+            <div class="kpi-sub" id="kpiOverallSub">System state</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Database Connection</div>
+            <div class="kpi-value" id="kpiDbStatus" style="font-size:22px;">—</div>
+            <div class="kpi-sub" id="kpiDbSub">SQLite storage</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Model Stack</div>
+            <div class="kpi-value" id="kpiModelStatus" style="font-size:22px;">—</div>
+            <div class="kpi-sub" id="kpiModelSub">Inference pipeline</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Model Version</div>
+            <div class="kpi-value" id="kpiModelVersion" style="font-size:22px;">—</div>
+            <div class="kpi-sub">Runtime release ID</div>
+          </div>
+        </div>
+
+        <!-- Group 2: Model Module Status Table -->
+        <h3 style="font-family:'Space Grotesk', sans-serif; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:var(--steel); margin:18px 0 10px;">Model Module Status</h3>
+        <div class="table-wrap" style="margin-bottom:22px;">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Role &amp; Pipeline Phase</th>
+                <th>Operational Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Module A</strong></td>
+                <td>Anomaly Detection (Isolation Forest &amp; Lot Z-Score)</td>
+                <td id="modAStatus"><span class="badge neutral">—</span></td>
+              </tr>
+              <tr>
+                <td><strong>Module B</strong></td>
+                <td>168h Degradation Forecast (Stacked RF+GB Point Estimates)</td>
+                <td id="modBStatus"><span class="badge neutral">—</span></td>
+              </tr>
+              <tr>
+                <td><strong>Module C</strong></td>
+                <td>Reliability &amp; Risk Fusion (Multi-Criteria Risk Scoring)</td>
+                <td id="modCStatus"><span class="badge neutral">—</span></td>
+              </tr>
+              <tr>
+                <td><strong>Conformal Prediction</strong></td>
+                <td>Quantile Interval Bounds (&alpha; = 0.05 / 0.95 Horizons)</td>
+                <td id="conformalStatus"><span class="badge neutral">—</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Group 3: Database Record Counts Grid -->
+        <h3 style="font-family:'Space Grotesk', sans-serif; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:var(--steel); margin:18px 0 10px;">Database Record Diagnostics</h3>
+        <div class="kpi-row" style="margin-bottom:18px;">
+          <div class="kpi">
+            <div class="kpi-label">Lots Ingested</div>
+            <div class="kpi-value" id="cntLots">0</div>
+            <div class="kpi-sub">Manufacturing batches</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Components</div>
+            <div class="kpi-value" id="cntComponents">0</div>
+            <div class="kpi-sub">Screened units</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Measurements</div>
+            <div class="kpi-value" id="cntMeasurements">0</div>
+            <div class="kpi-sub">Time-series checkpoints</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Predictions</div>
+            <div class="kpi-value" id="cntPredictions">0</div>
+            <div class="kpi-sub">168h forecasted parameters</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Risk Assessments</div>
+            <div class="kpi-value" id="cntRisk">0</div>
+            <div class="kpi-sub">Evaluated unit scores</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Explanations</div>
+            <div class="kpi-value" id="cntExplanations">0</div>
+            <div class="kpi-sub">SHAP attribution records</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Backend Connection Settings & Probes -->
+      <div style="margin-top:20px; padding-top:18px; border-top:1px solid var(--line);">
+        <h3 style="font-family:'Space Grotesk', sans-serif; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:var(--steel); margin:0 0 10px;">Backend Connectivity</h3>
+        <div class="console-actions">
+          <input class="input" id="apiBase" value="http://127.0.0.1:8000" style="min-width:260px;" placeholder="http://127.0.0.1:8000" />
+          <button class="btn" id="testApi">Save &amp; test connection</button>
+        </div>
+        <p class="box-sub" style="margin-top:10px;">Connected host: <code id="srvUrl" style="color:var(--sky);">http://127.0.0.1:8000</code> · Health probe: <span class="badge neutral" id="healthBadge">probing...</span></p>
+      </div>
     </section>
 
     <section class="box">
       <h2 class="box-title">Workflow</h2>
       <div class="console-actions">
         <label class="ctl" style="min-width:220px;">Default ingest action
-          <select class="select"><option>Auto-score with sage-1.0</option><option>Store only</option></select>
+          <select class="select"><option>Auto-score with sage-1.1</option><option>Store only</option></select>
         </label>
         <label class="ctl" style="min-width:220px;">Rejected components
           <select class="select"><option>Quarantine + notify</option><option>Flag only</option></select>
@@ -103,41 +319,139 @@
 
   const apiInput = document.getElementById("apiBase");
   const srvUrl = document.getElementById("srvUrl");
-  const serverBadge = document.getElementById("serverBadge");
   const healthBadge = document.getElementById("healthBadge");
 
   const currentBase = window.SAGEAPI.getBaseUrl();
   apiInput.value = currentBase;
   srvUrl.textContent = currentBase;
 
+  async function loadSystemStatus() {
+    const loadingEl = document.getElementById("statusLoading");
+    const errorEl = document.getElementById("statusError");
+    const contentEl = document.getElementById("statusContent");
+    const errorMsgEl = document.getElementById("statusErrorMsg");
+    const spinner = document.getElementById("refreshSpinner");
+
+    if (spinner) spinner.style.display = "inline-block";
+    loadingEl.style.display = "block";
+    errorEl.style.display = "none";
+    contentEl.style.display = "none";
+
+    try {
+      const res = await window.SAGEAPI.getSystemStatus();
+      if (!res.ok || !res.data) {
+        throw new Error(res.error || "Failed to retrieve system status telemetry.");
+      }
+
+      const data = res.data;
+
+      // 1. Overall System Status
+      const overallVal = String(data.status || "unavailable").toLowerCase();
+      const kpiOverall = document.getElementById("kpiOverallStatus");
+      const kpiOverallSub = document.getElementById("kpiOverallSub");
+      kpiOverall.textContent = overallVal.toUpperCase();
+      kpiOverall.className = "kpi-value " + (overallVal === "healthy" ? "safe" : (overallVal === "degraded" ? "monitor" : "reject"));
+      kpiOverallSub.textContent = overallVal === "healthy" ? "All services operational" : (overallVal === "degraded" ? "Subsystem degraded" : "Service unavailable");
+
+      // 2. Database Connection
+      const dbConnected = Boolean(data.database && data.database.connected);
+      const kpiDb = document.getElementById("kpiDbStatus");
+      const kpiDbSub = document.getElementById("kpiDbSub");
+      kpiDb.textContent = dbConnected ? "CONNECTED" : "OFFLINE";
+      kpiDb.className = "kpi-value " + (dbConnected ? "safe" : "reject");
+      kpiDbSub.textContent = dbConnected ? "SQLite storage active" : "Database unreachable";
+
+      // 3. Model Stack Status
+      const modelStack = data.model_stack || {};
+      const modelStatus = String(modelStack.status || "unavailable").toLowerCase();
+      const kpiModel = document.getElementById("kpiModelStatus");
+      const kpiModelSub = document.getElementById("kpiModelSub");
+      kpiModel.textContent = modelStatus.toUpperCase();
+      kpiModel.className = "kpi-value " + (modelStatus === "ready" ? "safe" : (modelStatus === "degraded" ? "monitor" : "reject"));
+      kpiModelSub.textContent = modelStatus === "ready" ? "All pipelines ready" : "Pipeline degraded";
+
+      // 4. Model Version (Dynamic from API, e.g. "sage-1.1")
+      const modelVersion = modelStack.version || "—";
+      document.getElementById("kpiModelVersion").textContent = modelVersion;
+
+      // 5. Module Status Badges (Operational status vocabulary)
+      function setModuleBadge(id, statusStr, successTerm) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const val = String(statusStr || "unavailable").toLowerCase();
+        let cls = "neutral";
+        let label = val.toUpperCase();
+        let icon = "●";
+        if (val === successTerm) {
+          cls = "operational";
+          icon = "✓";
+        } else if (val === "degraded" || val === "monitor") {
+          cls = "degraded";
+          icon = "▲";
+        } else {
+          cls = "unavailable";
+          icon = "✕";
+        }
+        el.innerHTML = `<span class="badge ${cls}"><span class="badge-icon" aria-hidden="true">${icon}</span> ${label}</span>`;
+      }
+
+      setModuleBadge("modAStatus", modelStack.module_a, "loaded");
+      setModuleBadge("modBStatus", modelStack.module_b, "loaded");
+      setModuleBadge("modCStatus", modelStack.module_c, "active");
+      setModuleBadge("conformalStatus", modelStack.conformal_prediction, "enabled");
+
+      // 6. Database Record Counts
+      const records = (data.database && data.database.records) || {};
+      document.getElementById("cntLots").textContent = records.lots !== undefined ? Number(records.lots).toLocaleString() : "—";
+      document.getElementById("cntComponents").textContent = records.components !== undefined ? Number(records.components).toLocaleString() : "—";
+      document.getElementById("cntMeasurements").textContent = records.measurements !== undefined ? Number(records.measurements).toLocaleString() : "—";
+      document.getElementById("cntPredictions").textContent = records.predictions !== undefined ? Number(records.predictions).toLocaleString() : "—";
+      document.getElementById("cntRisk").textContent = records.risk_assessments !== undefined ? Number(records.risk_assessments).toLocaleString() : "—";
+      document.getElementById("cntExplanations").textContent = records.explanations !== undefined ? Number(records.explanations).toLocaleString() : "—";
+
+      loadingEl.style.display = "none";
+      contentEl.style.display = "block";
+    } catch (err) {
+      loadingEl.style.display = "none";
+      errorEl.style.display = "block";
+      errorMsgEl.textContent = err.message || `Unable to reach FastAPI backend at ${window.SAGEAPI.getBaseUrl()}.`;
+    } finally {
+      if (spinner) spinner.style.display = "none";
+    }
+  }
+
   async function testBackend() {
     const base = apiInput.value.trim().replace(/\/+$/, "");
     srvUrl.textContent = base;
     window.SAGEAPI.setBaseUrl(base);
-    serverBadge.className = "badge monitor";
-    serverBadge.textContent = "probing...";
     healthBadge.className = "badge monitor";
     healthBadge.textContent = "probing...";
 
     const res = await window.SAGEAPI.checkHealth();
     if (res.ok && res.data && res.data.status === "healthy") {
-      serverBadge.className = "badge safe";
-      serverBadge.textContent = "connected (live)";
       healthBadge.className = "badge safe";
       healthBadge.textContent = "healthy (200 OK)";
       toast(`Connected — ${base} is live`);
     } else {
-      serverBadge.className = "badge reject";
-      serverBadge.textContent = "offline / unreachable";
       healthBadge.className = "badge reject";
       healthBadge.textContent = res.error || "error";
-      toast(`API not reachable at ${base} — using mock fallback`);
+      toast(`API not reachable at ${base}`);
     }
+
+    // Refresh full system telemetry
+    loadSystemStatus();
   }
 
   document.getElementById("testApi").addEventListener("click", testBackend);
+  document.getElementById("refreshStatusBtn").addEventListener("click", () => {
+    toast("Refreshing system telemetry...");
+    loadSystemStatus();
+  });
+  document.getElementById("retryStatusBtn").addEventListener("click", () => {
+    testBackend();
+  });
 
-  // Auto-check connection on load
+  // Initial load
   testBackend();
 </script>
 </body>

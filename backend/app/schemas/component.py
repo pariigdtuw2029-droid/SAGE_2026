@@ -2,6 +2,9 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.inference import InferenceTraceResponse
+from app.schemas.review import ReviewResponse
+
 
 class ComponentResponse(BaseModel):
     component_id: str
@@ -27,6 +30,12 @@ class ComponentResponse(BaseModel):
     reliability_index: Optional[float] = None
     model_version: Optional[str] = None
     split: Optional[str] = None
+    inference_run_id: Optional[str] = Field(
+        default=None, description="Linked Phase 17 inference run ID"
+    )
+    inference_trace: Optional[InferenceTraceResponse] = Field(
+        default=None, description="Inference execution trace and model provenance"
+    )
 
 
 class TrajectoryPoint(BaseModel):
@@ -45,6 +54,9 @@ class ExplanationItem(BaseModel):
     feature: str
     contribution: Optional[float] = None
     reason: str
+    module: Optional[str] = Field(default=None, description="Generating module (MODULE_A, MODULE_B, MODULE_C)")
+    evidence_type: Optional[str] = Field(default=None, description="Classification of evidence (SHAP, DRIFT, RULE, FALLBACK)")
+    run_id: Optional[str] = Field(default=None, description="Linked inference run ID")
 
 
 class ComponentReportResponse(BaseModel):
@@ -82,4 +94,22 @@ class ComponentReportResponse(BaseModel):
     explanations: Optional[List[ExplanationItem]] = Field(
         default_factory=list,
         description="Structured feature-level explanations and attributions",
+    )
+    inference_run_id: Optional[str] = Field(
+        default=None, description="Linked Phase 17 inference run ID"
+    )
+    inference_trace: Optional[InferenceTraceResponse] = Field(
+        default=None, description="Inference execution trace and model provenance"
+    )
+    current_disposition: Optional[str] = Field(
+        default=None,
+        description="Latest human engineering review disposition (PASS, HOLD, QUARANTINE)",
+    )
+    total_reviews: Optional[int] = Field(
+        default=0,
+        description="Total number of human engineering review records",
+    )
+    reviews: Optional[List[ReviewResponse]] = Field(
+        default_factory=list,
+        description="Chronological engineering review history",
     )

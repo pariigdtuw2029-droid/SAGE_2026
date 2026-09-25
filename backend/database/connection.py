@@ -53,8 +53,10 @@ def init_db() -> None:
     """Create all tables. Idempotent (checkfirst=True by default)."""
     # Import so the mappers are registered on Base before create_all.
     from database import models  # noqa: F401
+    from database import crud
 
     Base.metadata.create_all(bind=engine)
+    crud.migrate_explanations_schema(engine)
 
 
 def drop_db() -> None:

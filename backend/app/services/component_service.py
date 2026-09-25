@@ -44,10 +44,42 @@ def get_component(component_id: str) -> Optional[dict]:
                     if pred and pred.get("model_version"):
                         comp["model_version"] = pred.get("model_version")
 
+                # Phase 17: attach inference run traceability if linked
+                run = crud.get_latest_inference_run_for_component(component_id, db=s)
+                if run is not None:
+                    comp["inference_run_id"] = run["run_id"]
+                    comp["inference_trace"] = {
+                        "run_id": run["run_id"],
+                        "timestamp": run["timestamp"],
+                        "model_version": run["model_version"],
+                        "execution_status": run["execution_status"],
+                        "module_a_status": run["module_a_status"],
+                        "module_b_status": run["module_b_status"],
+                        "module_c_status": run["module_c_status"],
+                        "is_fallback": run["is_fallback"],
+                        "artifact_hashes": {
+                            "anomaly_pipeline.joblib": run["anomaly_pipeline_hash"],
+                            "drift_prediction_models.joblib": run["drift_models_hash"],
+                            "anomaly_shap_bundle.joblib": run["shap_bundle_hash"],
+                            "config.json": run["config_hash"],
+                        },
+                        "config_hash": run["config_hash"],
+                        "source_filename": run["source_filename"],
+                        "total_components": run["total_components"],
+                    }
+                else:
+                    comp["inference_run_id"] = None
+                    comp["inference_trace"] = None
+
                 return comp
     except Exception:
         pass
-    return mock_data.MOCK_COMPONENTS.get(component_id)
+    mock = mock_data.MOCK_COMPONENTS.get(component_id)
+    if mock is not None:
+        mock = dict(mock)
+        mock.setdefault("inference_run_id", None)
+        mock.setdefault("inference_trace", None)
+    return mock
 
 
 def _adapt_predicted_point(pt: dict) -> Optional[dict]:
@@ -141,12 +173,76 @@ def get_report(component_id: str) -> Optional[dict]:
                 if not rep.get("model_version"):
                     rep["model_version"] = risk.get("model_version") or pred.get("model_version")
 
+                # Phase 17: attach inference run traceability if linked
+                run = crud.get_latest_inference_run_for_component(component_id, db=s)
+                if run is not None:
+                    rep["inference_run_id"] = run["run_id"]
+                    rep["inference_trace"] = {
+                        "run_id": run["run_id"],
+                        "timestamp": run["timestamp"],
+                        "model_version": run["model_version"],
+                        "execution_status": run["execution_status"],
+                        "module_a_status": run["module_a_status"],
+                        "module_b_status": run["module_b_status"],
+                        "module_c_status": run["module_c_status"],
+                        "is_fallback": run["is_fallback"],
+                        "artifact_hashes": {
+                            "anomaly_pipeline.joblib": run["anomaly_pipeline_hash"],
+                            "drift_prediction_models.joblib": run["drift_models_hash"],
+                            "anomaly_shap_bundle.joblib": run["shap_bundle_hash"],
+                            "config.json": run["config_hash"],
+                        },
+                        "config_hash": run["config_hash"],
+                        "source_filename": run["source_filename"],
+                        "total_components": run["total_components"],
+                    }
+                else:
+                    rep["inference_run_id"] = None
+                    rep["inference_trace"] = None
+
+                # Phase 19: attach human engineering review disposition if available
+                try:
+                    from app.services import review_service
+                    rev_res = review_service.get_component_reviews(component_id)
+                    if rev_res is not None:
+                        curr_disp, total_revs, rev_list = rev_res
+                        rep["current_disposition"] = curr_disp
+                        rep["total_reviews"] = total_revs
+                        rep["reviews"] = [
+                            {
+                                "id": r.id,
+                                "component_id": r.component_id,
+                                "user_id": r.user_id,
+                                "username": r.username,
+                                "role": r.role,
+                                "disposition": r.disposition,
+                                "comment": r.comment,
+                                "created_at": r.created_at,
+                                "updated_at": r.updated_at,
+                            }
+                            for r in rev_list
+                        ]
+                    else:
+                        rep["current_disposition"] = None
+                        rep["total_reviews"] = 0
+                        rep["reviews"] = []
+                except Exception:
+                    rep["current_disposition"] = None
+                    rep["total_reviews"] = 0
+                    rep["reviews"] = []
+
                 return rep
     except Exception:
         pass
 
     if component_id not in mock_data.MOCK_COMPONENTS:
         return None
-    return mock_data.MOCK_REPORTS.get(
+    mock = mock_data.MOCK_REPORTS.get(
         component_id, mock_data.get_default_report(component_id)
     )
+    if mock is not None:
+        mock = dict(mock)
+        mock.setdefault("current_disposition", None)
+        mock.setdefault("total_reviews", 0)
+        mock.setdefault("reviews", [])
+    return mock

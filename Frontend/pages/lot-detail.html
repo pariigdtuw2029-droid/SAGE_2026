@@ -16,6 +16,15 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
+    <!-- Task-Oriented Navigation Ribbon -->
+    <nav class="subnav-bar">
+      <span class="subnav-badge">02 // Lot Overview</span>
+      <a class="subnav-tab" href="lot-analytics.html" id="subnavLotAnalytics">← Lot Overview &amp; Anomaly Screening</a>
+      <a class="subnav-tab active" href="lot-detail.html" id="subnavWaferGrid">02 Wafer Risk Grid</a>
+      <a class="subnav-tab" href="burn-in.html">Chamber Ingestion</a>
+      <a class="subnav-tab" href="component-detail.html">Component Inspector →</a>
+    </nav>
+
     <div class="kpi-row" id="kpis"></div>
 
     <section class="box">
@@ -48,9 +57,16 @@
 <script>
   const { data, charts, topbar, renderSidebar, param } = window.SAGE;
 
-  renderSidebar("burn-in.html");
+  renderSidebar("lot-detail.html");
   const rawLotId = param("lot") || "LOT_27";
   const lotId = rawLotId.toUpperCase();
+
+  const subLot = document.getElementById("subnavLotAnalytics");
+  if (subLot) subLot.href = `lot-analytics.html?lot=${encodeURIComponent(lotId)}`;
+  const subAnomaly = document.getElementById("subnavAnomaly");
+  if (subAnomaly) subAnomaly.href = `anomaly.html?lot=${encodeURIComponent(lotId)}`;
+  const subWafer = document.getElementById("subnavWaferGrid");
+  if (subWafer) subWafer.href = `lot-detail.html?lot=${encodeURIComponent(lotId)}`;
 
   async function renderLotDetail() {
     let isLive = false;
@@ -76,7 +92,7 @@
     }
 
     if (isLive) {
-      topbar(`${lotId} · Status: ${lotData.status} <span class="badge safe" style="margin-left:8px;font-size:11px;">LIVE</span>`, "burn-in.html", "Back to Lots");
+      topbar(`${lotId} · Status: ${lotData.status} <span class="badge safe" style="margin-left:8px;font-size:11px;">LIVE</span>`, `lot-analytics.html?lot=${encodeURIComponent(lotId)}`, "Back to Lot Analytics");
 
       document.getElementById("kpis").innerHTML = [
         ["Total Components", summaryData.total_components],
@@ -120,8 +136,11 @@
         charts.scatterChart(document.getElementById("spread"),
           liveComps.map((c) => {
             const risk = typeof c.risk_score === "number" ? c.risk_score : (typeof c.risk === "number" ? c.risk : 0);
-            const decision = (c.decision || c.status || "").toUpperCase();
+            const compId = c.component_id || c.id;
             return {
+              id: compId,
+              decision: decision,
+              risk: risk,
               x: Math.round(100 - risk), y: risk,
               color: decision === "PASS" ? window.SAGE.COLORS.safe
                    : decision === "REJECT" ? window.SAGE.COLORS.reject
@@ -142,7 +161,7 @@
       const lot = data.lotById(lotId) || data.lots[0];
       const comps = data.compsByLot(lot.lotId);
 
-      topbar(`${lot.lotId}: ${lot.type} (${lot.tempLabel})`, "burn-in.html", "Back to Lots");
+      topbar(`${lot.lotId}: ${lot.type} (${lot.tempLabel})`, `lot-analytics.html?lot=${encodeURIComponent(lot.lotId)}`, "Back to Lot Analytics");
 
       const avgRisk = (comps.reduce((a, c) => a + c.risk, 0) / (comps.length || 1)).toFixed(1);
       const highRisk = comps.filter((c) => c.risk >= 65).length;

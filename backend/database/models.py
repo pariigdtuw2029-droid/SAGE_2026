@@ -31,6 +31,7 @@ Mapping from the SAGE burn-in domain to the spec's tables:
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -183,9 +184,60 @@ class Explanation(Base):
     component_id: Mapped[str] = mapped_column(
         ForeignKey("components.component_id", ondelete="CASCADE"), index=True
     )
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    module: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reason: Mapped[str] = mapped_column(Text)
     feature: Mapped[str] = mapped_column(String(64))
     contribution: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     component: Mapped["Component"] = relationship(back_populates="explanations")
+
+
+class InferenceRun(Base):
+    __tablename__ = "inference_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_status: Mapped[str] = mapped_column(String(32), nullable=False)  # SUCCESS, DEGRADED, FALLBACK
+    module_a_status: Mapped[str] = mapped_column(String(32), nullable=False)   # loaded, fallback, unavailable
+    module_b_status: Mapped[str] = mapped_column(String(32), nullable=False)   # loaded, degraded, unavailable
+    module_c_status: Mapped[str] = mapped_column(String(32), nullable=False)   # active, unavailable
+    is_fallback: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    anomaly_pipeline_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    drift_models_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    shap_bundle_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    total_components: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    component_links: Mapped[list["InferenceRunComponent"]] = relationship(
+        back_populates="inference_run", cascade="all, delete-orphan"
+    )
+
+
+class InferenceRunComponent(Base):
+    __tablename__ = "inference_run_components"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("inference_runs.run_id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    component_id: Mapped[str] = mapped_column(
+        ForeignKey("components.component_id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    inference_run: Mapped["InferenceRun"] = relationship(back_populates="component_links")
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "component_id", name="uq_run_component"),
+    )

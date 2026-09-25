@@ -1,12 +1,17 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.auth import get_current_user
 from app.schemas.component import ComponentResponse
 from app.schemas.lot import LotResponse, LotSummaryResponse
 from app.services import lot_service
 
-router = APIRouter(prefix="/api/lots", tags=["Lots"])
+router = APIRouter(
+    prefix="/api/lots",
+    tags=["Lots"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=List[LotResponse])

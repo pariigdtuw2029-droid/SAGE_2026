@@ -10,6 +10,7 @@ opened and closed for the call. This keeps Member 1's routers session-agnostic.
 """
 
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -142,13 +143,37 @@ def add_risk_assessment(component_id: str, anomaly_score: float, drift_score: fl
 
 
 def add_explanations(component_id: str, reasons: List[tuple],
+                     run_id: Optional[str] = None,
                      db: Optional[Session] = None) -> int:
-    """Insert explanation rows: list of (feature, contribution, reason)."""
+    """Insert explanation rows: list of (feature, contribution, reason[, module, evidence_type])."""
     s = _session(db)
-    for feature, contribution, reason in reasons:
+    for item in reasons:
+        if hasattr(item, "module") and hasattr(item, "evidence_type"):
+            feature = item[0]
+            contribution = item[1]
+            reason = item[2]
+            module = item.module
+            evidence_type = item.evidence_type
+        elif len(item) == 5:
+            feature, contribution, reason, module, evidence_type = item
+        elif len(item) == 3:
+            feature, contribution, reason = item
+            module, evidence_type = None, None
+        else:
+            feature = item[0]
+            contribution = item[1] if len(item) > 1 else None
+            reason = item[2] if len(item) > 2 else ""
+            module = item[3] if len(item) > 3 else None
+            evidence_type = item[4] if len(item) > 4 else None
+
         s.add(models.Explanation(
-            component_id=component_id, feature=feature,
-            contribution=contribution, reason=reason,
+            component_id=component_id,
+            run_id=run_id,
+            module=module,
+            evidence_type=evidence_type,
+            feature=feature,
+            contribution=contribution,
+            reason=reason,
         ))
     if db is None:
         s.commit()
@@ -597,6 +622,9 @@ def get_component_report(component_id: str, db: Optional[Session] = None) -> Opt
             "feature": e.feature,
             "contribution": e.contribution,
             "reason": e.reason,
+            "module": getattr(e, "module", None),
+            "evidence_type": getattr(e, "evidence_type", None),
+            "run_id": getattr(e, "run_id", None),
         } for e in explanations],
     }
 
@@ -611,3 +639,157 @@ def count_rows(db: Optional[Session] = None) -> Dict[str, int]:
         "risk_assessments": s.scalar(select(func.count()).select_from(models.RiskAssessment)) or 0,
         "explanations": s.scalar(select(func.count()).select_from(models.Explanation)) or 0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 17 — Inference Traceability & Model Provenance
+# ---------------------------------------------------------------------------
+
+def migrate_explanations_schema(target_engine=None) -> None:
+    """Safely and idempotently ensure run_id, module, and evidence_type exist on explanations table."""
+    from database.connection import engine
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    with eng.connect() as conn:
+        inspector = inspect(conn)
+        tables = inspector.get_table_names()
+        if "explanations" in tables:
+            cols = {c["name"] for c in inspector.get_columns("explanations")}
+            if "run_id" not in cols:
+                conn.execute(text("ALTER TABLE explanations ADD COLUMN run_id VARCHAR(64)"))
+            if "module" not in cols:
+                conn.execute(text("ALTER TABLE explanations ADD COLUMN module VARCHAR(16)"))
+            if "evidence_type" not in cols:
+                conn.execute(text("ALTER TABLE explanations ADD COLUMN evidence_type VARCHAR(32)"))
+
+            try:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_explanations_run_id ON explanations(run_id)"))
+            except Exception:
+                pass
+            conn.commit()
+
+
+def init_inference_db(target_engine=None) -> None:
+    """Ensure inference_runs, inference_run_components, and updated explanations schema exist."""
+    from database.connection import engine
+    eng = target_engine or engine
+    models.InferenceRun.__table__.create(bind=eng, checkfirst=True)
+    models.InferenceRunComponent.__table__.create(bind=eng, checkfirst=True)
+    migrate_explanations_schema(target_engine=eng)
+
+
+def create_inference_run(
+    run_id: str,
+    model_version: str,
+    execution_status: str,
+    module_a_status: str,
+    module_b_status: str,
+    module_c_status: str,
+    is_fallback: bool,
+    anomaly_pipeline_hash: str,
+    drift_models_hash: str,
+    shap_bundle_hash: str,
+    config_hash: str,
+    source_filename: Optional[str] = None,
+    total_components: int = 0,
+    timestamp: Optional[datetime] = None,
+    db: Optional[Session] = None,
+) -> models.InferenceRun:
+    """Persist a new execution-level inference run provenance record."""
+    s = _session(db)
+    run = models.InferenceRun(
+        run_id=run_id,
+        timestamp=timestamp or datetime.utcnow(),
+        model_version=model_version,
+        execution_status=execution_status,
+        module_a_status=module_a_status,
+        module_b_status=module_b_status,
+        module_c_status=module_c_status,
+        is_fallback=is_fallback,
+        anomaly_pipeline_hash=anomaly_pipeline_hash,
+        drift_models_hash=drift_models_hash,
+        shap_bundle_hash=shap_bundle_hash,
+        config_hash=config_hash,
+        source_filename=source_filename,
+        total_components=total_components,
+    )
+    s.merge(run)
+    if db is None:
+        s.commit()
+    return run
+
+
+def link_inference_run_components(
+    run_id: str,
+    component_ids: List[str],
+    db: Optional[Session] = None,
+) -> int:
+    """Link an inference run to the components evaluated in that run."""
+    s = _session(db)
+    count = 0
+    for cid in component_ids:
+        link = models.InferenceRunComponent(run_id=run_id, component_id=str(cid))
+        s.add(link)
+        count += 1
+    if db is None:
+        s.commit()
+    return count
+
+
+def get_inference_run(run_id: str, db: Optional[Session] = None) -> Optional[dict]:
+    """Retrieve an inference run record by its run_id."""
+    s = _session(db)
+    run = s.get(models.InferenceRun, run_id)
+    if run is None:
+        return None
+    return {
+        "run_id": run.run_id,
+        "timestamp": run.timestamp,
+        "model_version": run.model_version,
+        "execution_status": run.execution_status,
+        "module_a_status": run.module_a_status,
+        "module_b_status": run.module_b_status,
+        "module_c_status": run.module_c_status,
+        "is_fallback": bool(run.is_fallback),
+        "anomaly_pipeline_hash": run.anomaly_pipeline_hash,
+        "drift_models_hash": run.drift_models_hash,
+        "shap_bundle_hash": run.shap_bundle_hash,
+        "config_hash": run.config_hash,
+        "source_filename": run.source_filename,
+        "total_components": run.total_components,
+    }
+
+
+def get_latest_inference_run_for_component(
+    component_id: str, db: Optional[Session] = None
+) -> Optional[dict]:
+    """Retrieve the latest inference run linked to a component."""
+    s = _session(db)
+    stmt = (
+        select(models.InferenceRun)
+        .join(models.InferenceRunComponent, models.InferenceRun.run_id == models.InferenceRunComponent.run_id)
+        .where(models.InferenceRunComponent.component_id == str(component_id))
+        .order_by(models.InferenceRun.timestamp.desc())
+        .limit(1)
+    )
+    run = s.execute(stmt).scalar_one_or_none()
+    if run is None:
+        return None
+    return {
+        "run_id": run.run_id,
+        "timestamp": run.timestamp,
+        "model_version": run.model_version,
+        "execution_status": run.execution_status,
+        "module_a_status": run.module_a_status,
+        "module_b_status": run.module_b_status,
+        "module_c_status": run.module_c_status,
+        "is_fallback": bool(run.is_fallback),
+        "anomaly_pipeline_hash": run.anomaly_pipeline_hash,
+        "drift_models_hash": run.drift_models_hash,
+        "shap_bundle_hash": run.shap_bundle_hash,
+        "config_hash": run.config_hash,
+        "source_filename": run.source_filename,
+        "total_components": run.total_components,
+    }
+

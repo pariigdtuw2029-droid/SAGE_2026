@@ -312,6 +312,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   line-height: 1.1;
 }
 
+.kpi-value.safe { color: var(--safe); text-shadow: 0 0 24px rgba(52, 211, 153, 0.4); }
+.kpi-value.monitor { color: var(--monitor); text-shadow: 0 0 24px rgba(251, 191, 36, 0.4); }
+.kpi-value.reject { color: var(--reject); text-shadow: 0 0 24px rgba(248, 113, 113, 0.4); }
+
 .kpi-sub { font-family: var(--mono); font-size: 10.5px; color: var(--steel-dim); margin-top: 7px; }
 
 .box {
@@ -388,6 +392,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .table-wrap {
   overflow-x: auto;
   border-radius: 10px;
+  position: relative;
+  border: 1px solid var(--line);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 201, 250, 0.25) transparent;
 }
 
 table.data {
@@ -398,20 +406,25 @@ table.data {
 }
 
 table.data th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   text-align: left;
   font-weight: 500;
   color: var(--sky);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-size: 10.5px;
-  padding: 9px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line-strong);
   white-space: nowrap;
-  background: rgba(143, 201, 250, 0.045);
+  background: rgba(13, 22, 36, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 table.data td {
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   color: var(--frost);
   font-variant-numeric: tabular-nums;
@@ -419,9 +432,10 @@ table.data td {
 }
 
 table.data tbody tr { transition: background 0.15s ease; }
+table.data tbody tr:hover { background: rgba(143, 201, 250, 0.05); }
 
 table.data tr.click { cursor: pointer; }
-table.data tr.click:hover { background: rgba(143, 201, 250, 0.08); box-shadow: inset 2px 0 0 var(--sky); }
+table.data tr.click:hover { background: rgba(143, 201, 250, 0.09); box-shadow: inset 3px 0 0 var(--sky); }
 
 .badge {
   display: inline-block;
@@ -436,8 +450,24 @@ table.data tr.click:hover { background: rgba(143, 201, 250, 0.08); box-shadow: i
 .badge.pass, .badge.safe { color: var(--safe); border-color: rgba(52, 211, 153, 0.55); background: rgba(52, 211, 153, 0.07); }
 .badge.monitor { color: var(--monitor); border-color: rgba(251, 191, 36, 0.55); background: rgba(251, 191, 36, 0.07); }
 .badge.hold { color: var(--hold); border-color: rgba(251, 146, 60, 0.55); background: rgba(251, 146, 60, 0.07); }
-.badge.reject, .badge.critical { color: var(--reject); border-color: rgba(248, 113, 113, 0.55); background: rgba(248, 113, 113, 0.08); }
 .badge.neutral { color: var(--steel); border-color: var(--line-strong); }
+
+/* --- Operational Status Badges (System Health Diagnostics) --- */
+.badge.operational, .badge.ready, .badge.loaded, .badge.active, .badge.enabled, .badge.connected, .badge.online {
+  color: var(--safe);
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.08);
+}
+.badge.degraded {
+  color: var(--monitor);
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.08);
+}
+.badge.offline, .badge.unavailable {
+  color: var(--reject);
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.08);
+}
 
 /* ---------- Controls ---------- */
 
@@ -627,3 +657,161 @@ canvas.chart { width: 100%; display: block; }
   .sidebar { display: none; }
   .console { margin-left: 0; }
 }
+
+/* ---------- Sub-navigation ribbon for consolidated dashboard groups ---------- */
+
+.subnav-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(13, 22, 36, 0.65);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.subnav-bar::-webkit-scrollbar { display: none; }
+
+.subnav-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--steel-dim);
+  padding: 4px 8px;
+  background: rgba(147, 166, 184, 0.08);
+  border-radius: 5px;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.subnav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  padding: 5px 13px;
+  border-radius: 7px;
+  text-decoration: none;
+  color: var(--steel);
+  border: 1px solid transparent;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+
+.subnav-tab:hover {
+  color: var(--signal);
+  background: rgba(143, 201, 250, 0.09);
+  border-color: rgba(143, 201, 250, 0.2);
+}
+
+.subnav-tab.active {
+  color: var(--signal);
+  background: linear-gradient(90deg, rgba(143, 201, 250, 0.18), rgba(143, 201, 250, 0.06));
+  border-color: rgba(143, 201, 250, 0.45);
+  font-weight: 500;
+  box-shadow: 0 0 14px -3px rgba(143, 201, 250, 0.35);
+}
+
+/* ---------- Interactive Chart Tooltip ---------- */
+.sage-chart-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(6, 11, 20, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(143, 201, 250, 0.38);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--signal);
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.9), 0 0 18px -4px rgba(143, 201, 250, 0.35);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  opacity: 0;
+  transform: translate(-50%, -100%) translateY(-10px);
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.sage-chart-tooltip.show {
+  opacity: 1;
+  transform: translate(-50%, -100%) translateY(-14px);
+}
+
+.sage-chart-tooltip .tt-title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--steel);
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(143, 201, 250, 0.15);
+  padding-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sage-chart-tooltip .tt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.sage-chart-tooltip .tt-label {
+  color: var(--steel-dim);
+  font-size: 11px;
+}
+
+.sage-chart-tooltip .tt-val {
+  font-weight: 600;
+  color: var(--signal);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- State View & Engineering Polish ---------- */
+.state-box {
+  text-align: center;
+  padding: 50px 24px;
+  border: 1px solid rgba(143, 201, 250, 0.2);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.85);
+  margin-top: 18px;
+}
+
+.pulse-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  background: var(--sky);
+  box-shadow: 0 0 16px var(--sky);
+  animation: pulseGlow 1.4s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(0.85); opacity: 0.5; box-shadow: 0 0 8px var(--sky); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 22px var(--sky); }
+}
+
+/* Canvas crisp rendering */
+canvas.chart {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  cursor: crosshair;
+}
+
+

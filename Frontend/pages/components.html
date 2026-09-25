@@ -16,6 +16,16 @@
   <main class="console">
     <div class="console-top" id="consoleTop"></div>
 
+    <!-- Group 3: Component Deep-Dive & Predictions Sub-Navigation Ribbon -->
+    <!-- Task-Oriented Navigation Ribbon -->
+    <nav class="subnav-bar">
+      <span class="subnav-badge">04 // Component Database</span>
+      <a class="subnav-tab active" href="components.html">01 Component Screening Database</a>
+      <a class="subnav-tab" href="component-detail.html">02 Component Inspector &amp; Diagnostics →</a>
+      <a class="subnav-tab" href="lot-analytics.html">← Lot Overview</a>
+      <a class="subnav-tab" href="reports.html">Inspection Reports →</a>
+    </nav>
+
     <div class="console-actions" style="margin-bottom:18px;">
       <input class="input" id="q" placeholder="Search component ID…" style="min-width:220px;" />
       <select class="select" id="fLot"><option value="">All Lots</option></select>
@@ -31,7 +41,7 @@
       <div class="table-wrap">
         <table class="data" id="compTable">
           <thead>
-            <tr><th>ID</th><th>Lot</th><th>Anomaly</th><th>Drift</th><th>Risk</th><th>Decision</th><th>Tier</th></tr>
+            <tr><th>Component ID</th><th>Lot Identifier</th><th>Anomaly Score</th><th>Predicted @168h</th><th>Risk Score</th><th>Decision</th><th>Reliability Tier</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -46,7 +56,7 @@
   const { topbar, renderSidebar, badge } = window.SAGE;
 
   renderSidebar("components.html");
-  topbar("Component Database", null, null, `<span class="box-sub" style="margin:0;">GET /api/lots/{lot_id}/components — verified database screening</span>`);
+  topbar("Component Database", null, null, `<span class="box-sub" style="margin:0;">Verified Component Screening</span>`);
 
   const lotsSel = document.getElementById("fLot");
   const qInput = document.getElementById("q");
@@ -62,8 +72,9 @@
   // Populate lot dropdown with real database lots
   async function loadLots() {
     const res = await window.SAGEAPI.getLots();
-    if (res.ok && Array.isArray(res.data)) {
-      for (const l of res.data) {
+    const lots = (res.data && Array.isArray(res.data.value)) ? res.data.value : (Array.isArray(res.data) ? res.data : null);
+    if (res.ok && lots) {
+      for (const l of lots) {
         const o = document.createElement("option");
         o.value = l.lot_id;
         o.textContent = l.lot_id;
@@ -94,8 +105,9 @@
     const res = await window.SAGEAPI.getLotComponents(lotId);
     isLoading = false;
 
-    if (res.ok && Array.isArray(res.data)) {
-      currentComps = res.data;
+    const comps = (res.data && Array.isArray(res.data.value)) ? res.data.value : (Array.isArray(res.data) ? res.data : null);
+    if (res.ok && comps) {
+      currentComps = comps;
     } else {
       currentComps = [];
       loadError = res.error || "Failed to load components for lot.";
@@ -110,25 +122,25 @@
 
     if (!lotId) {
       countEl.textContent = "Select a lot";
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">Select a lot to view live components.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel); padding: 36px 16px; text-align: center;"><div style="font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:0.08em;color:var(--sky);margin-bottom:6px;text-transform:uppercase;">No Lot Selected</div><p style="color:var(--steel-dim);font-size:12px;margin:0;">Select a production lot from the dropdown above to inspect component telemetry.</p></td></tr>`;
       return;
     }
 
     if (isLoading) {
       countEl.textContent = "Loading…";
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">Loading components…</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel); padding: 36px 16px; text-align: center;"><div class="pulse-spinner"></div><div style="font-family:var(--mono);font-size:12px;color:var(--steel);">Loading lot components from screening repository…</div></td></tr>`;
       return;
     }
 
     if (loadError) {
       countEl.textContent = "Error";
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--accent-red, #ff5555); padding: 24px; text-align: center;">${loadError}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--reject); padding: 36px 16px; text-align: center;"><div style="font-family:var(--mono);font-size:13px;font-weight:600;margin-bottom:6px;">DATA RETRIEVAL FAILED</div><div style="font-size:12px;color:var(--steel-dim);">${loadError}</div></td></tr>`;
       return;
     }
 
     if (currentComps.length === 0) {
       countEl.textContent = "0 components";
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">No components found for this lot.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 36px 16px; text-align: center;">No components found for this lot.</td></tr>`;
       return;
     }
 
@@ -143,7 +155,7 @@
     countEl.textContent = `${rows.length} component${rows.length === 1 ? "" : "s"}`;
 
     if (rows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 18px; text-align: center;">No matches for filter criteria</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--steel-dim); padding: 24px; text-align: center;">No components match the active filter criteria.</td></tr>`;
       return;
     }
 
@@ -151,20 +163,21 @@
       const compId = c.component_id || "—";
       const lot = c.lot_id || lotId;
       const anomaly = typeof c.anomaly_score === "number" ? c.anomaly_score.toFixed(1) : (c.anomaly_score || "—");
-      const drift = typeof c.predicted_168h === "number" ? c.predicted_168h.toFixed(2) : (c.predicted_168h || "—");
+      const drift = typeof c.predicted_168h === "number" ? `${c.predicted_168h.toFixed(3)} µA` : (c.predicted_168h || "—");
       const risk = typeof c.risk_score === "number" ? c.risk_score.toFixed(1) : (c.risk_score || "—");
       const decision = c.decision || "—";
-      const tier = c.reliability_tier || (typeof c.risk_score === "number" ? (c.risk_score >= 65 ? "High-Risk" : c.risk_score >= 35 ? "Borderline" : "Space-Safe") : "—");
+      const tier = c.reliability_tier || (typeof c.risk_score === "number" ? (c.risk_score >= 65 ? "High-Risk" : c.risk_score >= 21.8 ? "Borderline" : "Space-Safe") : "—");
+      const tierClass = tier === "Space-Safe" ? "safe" : tier === "High-Risk" ? "reject" : "monitor";
 
       return `
         <tr class="click" data-c="${compId}" data-lot="${lot}">
-          <td><b>${compId}</b></td>
-          <td>${lot}</td>
+          <td style="font-weight:600;color:var(--signal);">${compId}</td>
+          <td style="color:var(--steel);">${lot}</td>
           <td>${anomaly}</td>
-          <td>${drift}</td>
+          <td style="color:var(--gold);">${drift}</td>
           <td>${risk}</td>
           <td>${badge(decision)}</td>
-          <td>${tier}</td>
+          <td><span class="badge ${tierClass}">${tier}</span></td>
         </tr>`;
     }).join("");
 

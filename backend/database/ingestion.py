@@ -10,9 +10,11 @@ by Member 1's upload endpoint (bytes → pandas) without going through disk.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+import uuid
 
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -41,6 +43,9 @@ class IngestionResult:
     splits: Dict[str, int] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
     issues: List[dict] = field(default_factory=list)
+    data_quality: Optional[dict] = None
+    inference_run_id: Optional[str] = None
+    inference_trace: Optional[dict] = None
 
     @property
     def ok(self) -> bool:
@@ -62,6 +67,9 @@ class IngestionResult:
             "splits": self.splits,
             "warnings": self.warnings,
             "issues": self.issues[:50],
+            "data_quality": self.data_quality,
+            "inference_run_id": self.inference_run_id,
+            "inference_trace": self.inference_trace,
         }
 
 
@@ -117,12 +125,13 @@ def ingest_dataframe(df: pd.DataFrame, db: Optional[Session] = None,
     report = validation.validate_dataframe(df)
     result.rejected_rows = report.rejected_rows
     result.valid_rows = report.valid_rows
+    result.data_quality = report.data_quality_summary()
     result.issues = [
         {"row": i.row_index, "component_id": i.component_id, "column": i.column,
          "type": i.issue_type, "detail": i.detail}
         for i in report.issues
     ]
-    if not report.is_valid:
+    if not report.is_valid or report.valid_rows == 0:
         raise DataValidationError(report)
 
     # 2. Preprocessing (cleaning, units, imputation, timestamps, relationships)
@@ -164,6 +173,59 @@ def ingest_dataframe(df: pd.DataFrame, db: Optional[Session] = None,
         result.model_version = model_version
         result.warnings.extend(ml_warnings)
 
+        # 4a. Phase 17 — Inference Traceability & Provenance
+        run_id = f"run_{uuid.uuid4().hex}"
+        trace_info = getattr(scores, "attrs", {}).get("trace_info", {})
+        module_a_status = trace_info.get("module_a_status", "loaded" if model_version == ml_inference.MODEL_VERSION else "fallback")
+        module_b_status = trace_info.get("module_b_status", "loaded")
+        module_c_status = trace_info.get("module_c_status", "active")
+
+        if module_a_status == "fallback":
+            execution_status = "FALLBACK"
+            is_fallback = True
+        elif module_b_status == "degraded":
+            execution_status = "DEGRADED"
+            is_fallback = False
+        else:
+            execution_status = "SUCCESS"
+            is_fallback = False
+
+        artifact_hashes = ml_inference.get_active_artifact_hashes()
+        now_utc = datetime.utcnow()
+
+        crud.create_inference_run(
+            run_id=run_id,
+            timestamp=now_utc,
+            model_version=model_version,
+            execution_status=execution_status,
+            module_a_status=module_a_status,
+            module_b_status=module_b_status,
+            module_c_status=module_c_status,
+            is_fallback=is_fallback,
+            anomaly_pipeline_hash=artifact_hashes.get("anomaly_pipeline.joblib", ""),
+            drift_models_hash=artifact_hashes.get("drift_prediction_models.joblib", ""),
+            shap_bundle_hash=artifact_hashes.get("anomaly_shap_bundle.joblib", ""),
+            config_hash=artifact_hashes.get("config.json", ""),
+            source_filename=filename,
+            total_components=len(cleaned.components),
+            db=s,
+        )
+        result.inference_run_id = run_id
+        result.inference_trace = {
+            "run_id": run_id,
+            "timestamp": now_utc,
+            "model_version": model_version,
+            "execution_status": execution_status,
+            "module_a_status": module_a_status,
+            "module_b_status": module_b_status,
+            "module_c_status": module_c_status,
+            "is_fallback": is_fallback,
+            "artifact_hashes": artifact_hashes,
+            "config_hash": artifact_hashes.get("config.json", ""),
+            "source_filename": filename,
+            "total_components": len(cleaned.components),
+        }
+
         # 4b. Idempotency: clear previous model outputs for these components so
         # re-ingesting a lot never duplicates predictions/risk/explanations.
         component_ids = [str(c) for c in cleaned.components["component_id"]]
@@ -174,6 +236,8 @@ def ingest_dataframe(df: pd.DataFrame, db: Optional[Session] = None,
                 models.RiskAssessment.component_id.in_(component_ids)).delete(synchronize_session=False)
             s.query(models.Explanation).filter(
                 models.Explanation.component_id.in_(component_ids)).delete(synchronize_session=False)
+            s.query(models.InferenceRunComponent).filter(
+                models.InferenceRunComponent.component_id.in_(component_ids)).delete(synchronize_session=False)
 
         # 5. Store predictions (per parameter), risk assessments, explanations
         for _, row in scores.iterrows():
@@ -215,8 +279,12 @@ def ingest_dataframe(df: pd.DataFrame, db: Optional[Session] = None,
             )
             result.risk_assessments_created += 1
 
-            explanations = ml_inference.build_explanations(row)
-            result.explanations_created += crud.add_explanations(cid, explanations, db=s)
+            explanations = ml_inference.build_explanations(row, module_b_status=module_b_status)
+            result.explanations_created += crud.add_explanations(cid, explanations, run_id=run_id, db=s)
+
+        # 5b. Link components to this inference run
+        if component_ids:
+            crud.link_inference_run_components(run_id, component_ids, db=s)
 
         # 6. Refresh component snapshots + lot counts
         for _, row in scores.iterrows():
