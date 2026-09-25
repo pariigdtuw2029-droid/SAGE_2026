@@ -191,7 +191,7 @@
 
         if (res.ok) {
           const params = new URLSearchParams(location.search);
-          const defaultRedirect = (location.protocol === "file:") ? "../index.html" : "/app";
+          const defaultRedirect = (location.protocol === "file:") ? "components.html" : "/pages/components.html";
           const requestedRedirect = params.get("redirect");
 
           let redirect = defaultRedirect;
