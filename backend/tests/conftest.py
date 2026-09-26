@@ -15,33 +15,20 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_db_path}"
 if "SAGE_JWT_SECRET" not in os.environ:
     os.environ["SAGE_JWT_SECRET"] = "sage-test-suite-secure-jwt-signing-secret-key-32bytes"
 
-os.environ.setdefault("SAGE_JWT_EXPIRE_MINUTES", "30")
-os.environ.setdefault("SAGE_ACCESS_TOKEN_EXPIRE_MINUTES", "1800")
-os.environ.setdefault(
-    "SAGE_USERS",
-    "admin:test-password-123:admin,engineer:eng-test-pass:engineer,reviewer:rev-test-pass:reviewer",
-)
-
+from app.core.security import create_access_token
 from app.main import app
-from app import security
-from app.services import auth_service
-
+from app.services.auth_service import init_auth_db
+from app.services.audit_service import init_audit_db
+from app.services.review_service import init_reviews_db
 
 
 @pytest.fixture()
 def client():
-@pytest.fixture()
-def client():
-    """TestClient with a valid bearer token pre-attached to every request."""
-    auth_service.init_auth_db()
-    auth_service.init_audit_db()
-    auth_service.init_reviews_db()
+    init_auth_db()
+    init_audit_db()
+    init_reviews_db()
+    token = create_access_token(subject="admin")
     c = TestClient(app)
-    c.headers.update({"Authorization": f"Bearer {security.create_access_token(subject='admin')}"})
+    c.headers.update({"Authorization": f"Bearer {token}"})
     return c
-
-
-@pytest.fixture()
-def token():
-    return security.create_access_token(subject="admin", expires_minutes=5)
 

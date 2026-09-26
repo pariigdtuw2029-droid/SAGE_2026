@@ -6,7 +6,6 @@ Team: BINARY BADDIES
 
 from enum import Enum
 from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -18,16 +17,13 @@ class UserRole(str, Enum):
 
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=64, description="User login identifier")
-    password: str = Field(..., min_length=1, max_length=128, description="Plaintext password for verification")
+    password: str = Field(..., min_length=1, description="Plaintext password for verification")
 
 
 class TokenResponse(BaseModel):
     access_token: str = Field(..., description="Signed JWT Bearer access token")
-    refresh_token: str = Field(default="", description="Refresh token for rotating sessions")
     token_type: str = Field(default="bearer", description="Token type, always bearer")
     expires_in: int = Field(..., description="Access token expiration window in seconds")
-    username: str = Field(default="", description="Authenticated username")
-    role: str = Field(default="engineer", description="Assigned role: admin, engineer, or reviewer")
 
 
 class UserResponse(BaseModel):

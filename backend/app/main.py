@@ -14,13 +14,8 @@ from app.api.health import router as health_router
 from app.api.lots import router as lots_router
 from app.api.components import router as components_router
 from app.api.alerts import router as alerts_router
-from app.api.alerts import router as alerts_router
-from app.api.auth import router as auth_router
-from app.api.components import router as components_router
-from app.api.lots import router as lots_router
 from app.api.system import router as system_router
-from app.security import decode_token, get_user_role
-
+from app.api.auth import router as auth_router
 
 logger = logging.getLogger("sage")
 
@@ -85,63 +80,8 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["*"],
 )
-
-
-# --- API authentication -----------------------------------------------------
-# Every /api/* request must carry a valid JWT, except the auth endpoints
-# themselves (/api/auth/login must be reachable to obtain a token).
-# Health checks and the static frontend stay public.
-#
-# A middleware (rather than a dependency on each router) guarantees nothing
-# is accidentally left unprotected when a new router is added — the default
-# is "deny", which is the right default for a security boundary.
-
-PUBLIC_API_PREFIXES = (
-    "/api/auth/login",   # obtain a token
-    "/api/auth/refresh",  # exchange refresh token; validates its own typ=refresh claim
-    "/api/auth/logout",   # harmless either way, but keeps the UI simple
-)
-
-
-@app.middleware("http")
-async def jwt_auth_middleware(request: Request, call_next):
-    path = request.url.path
-    # Browser CORS preflights (OPTIONS) never carry credentials; they must
-    # reach CORSMiddleware so the browser gets valid preflight headers back.
-    if request.method != "OPTIONS" and path.startswith("/api/") and not path.startswith(PUBLIC_API_PREFIXES):
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Not authenticated."},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        try:
-            claims = decode_token(auth_header[len("Bearer "):])
-        except Exception:
-            # Expired, tampered, malformed — one generic rejection either way.
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid or expired token."},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        # --- role gate -----------------------------------------------------
-        # Write operations (upload / ingest) are limited to admins and
-        # engineers; reviewers get read-only access to the data API.
-        role = (claims.get("role") or "reviewer").lower()
-        if request.method in ("POST", "PUT", "PATCH", "DELETE") and role not in (
-            "admin",
-            "engineer",
-        ):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Forbidden — reviewers have read-only access."},
-            )
-        request.state.user = claims
-    return await call_next(request)
 
 
 @app.get("/", tags=["Health"])
@@ -150,9 +90,6 @@ def root():
         "message": "SAGE API is running"
     }
 
-
-# Authentication (login issues JWTs; /api/auth/* is exempt from the guard)
-app.include_router(auth_router)
 
 # Health check route
 app.include_router(health_router)

@@ -12,7 +12,13 @@
  *  6. GET  /api/components/{id}/trajectory- Actual vs predicted burn-in trajectory
  *  7. GET  /api/alerts                    - High-risk component alerts
  *  8. GET  /api/components/{id}/report    - Detailed component engineering report
+ *  8b.GET  /api/components/{id}/reviews   - Component engineering review history
+ *  8c.POST /api/components/{id}/review    - Submit component engineering review
  *  9. GET  /health                        - Backend health check
+ *  10.GET  /api/lots/{lot_id}/components  - Components in a specific lot
+ *  11.GET  /api/system/status             - System diagnostics and model health
+ *  12.POST /api/auth/login                - JWT engineering authentication
+ *  13.GET  /api/auth/me                   - Current user identity verification
  */
 (function (global) {
   "use strict";
@@ -26,9 +32,6 @@
       if (stored && stored.trim()) return stored.trim().replace(/\/+$/, "");
     } catch (_) {}
     if (global.__API_BASE_URL__) return String(global.__API_BASE_URL__).replace(/\/+$/, "");
-    // When the page itself is served from a public host (Render, etc.), the
-    // API lives on the same origin — no cross-origin config needed. The
-    // hardcoded localhost default only applies when opening files locally.
     if (typeof location !== "undefined" && location.hostname
         && !/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|.+\.local)$/.test(location.hostname)) {
       return "";
@@ -48,8 +51,6 @@
   const USER_KEY = "SAGE_AUTH_USER";
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  // Statuses that mean "the backend isn't answering (yet)" — worth retrying.
   const RETRYABLE_STATUS = new Set([0, 502, 503, 504]);
   const GET_ATTEMPTS = 4;
   const GET_BACKOFF_MS = [2000, 3500, 5000];
@@ -98,9 +99,9 @@
         fetch(`${getBaseUrl()}/api/auth/logout`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
         }).catch(() => {});
       } catch (_) {}
     }
@@ -114,9 +115,8 @@
 
   function getUserRole() {
     const u = getUser();
-    return u && u.role ? u.role.toLowerCase() : null;
+    return (u && u.role) ? u.role.toLowerCase() : null;
   }
-
 
   async function request(path, options = {}) {
     const base = getBaseUrl();
@@ -136,26 +136,7 @@
         signal: controller.signal,
         ...options,
       };
-      if (options.body && typeof options.body === "object" && !(options.body instanceof Blob)) {
-        fetchOptions.headers["Content-Type"] = "application/json";
-        fetchOptions.body = JSON.stringify(options.body);
-      }
-    } else {
-      fetchOptions.headers = {
-        ...(options.headers || {}),
-      };
-    }
 
-    const token = getToken();
-    if (token && !fetchOptions.headers["Authorization"]) {
-      fetchOptions.headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    // For non-FormData requests, set Accept and JSON headers
-    if (!(options.body instanceof FormData)) {
-
-
-      // For non-FormData requests, set Accept and JSON headers
       if (!(options.body instanceof FormData)) {
         fetchOptions.headers = {
           Accept: "application/json",
@@ -165,38 +146,20 @@
           fetchOptions.headers["Content-Type"] = "application/json";
           fetchOptions.body = JSON.stringify(options.body);
         }
+      } else {
+        fetchOptions.headers = {
+          ...(options.headers || {}),
+        };
+      }
+
+      const token = getToken();
+      if (token && !fetchOptions.headers["Authorization"]) {
+        fetchOptions.headers["Authorization"] = `Bearer ${token}`;
       }
 
       try {
         const res = await fetch(url, fetchOptions);
         clearTimeout(timer);
-
-        let payload = null;
-        const ctype = res.headers.get("content-type") || "";
-        if (ctype.includes("application/json")) {
-          payload = await res.json();
-        }
-
-        if (!res.ok) {
-          const errorDetail = payload && payload.detail ? payload.detail : `HTTP error ${res.status}`;
-          if (res.status === 401) {
-            logout();
-          } else if (res.status === 403) {
-            try {
-              if (typeof window !== "undefined" && window.SAGE && typeof window.SAGE.toast === "function") {
-                window.SAGE.toast("Access Denied (403): " + errorDetail);
-              }
-            } catch (_) {}
-          }
-          return { ok: false, status: res.status, error: errorDetail, data: null };
-        }
-
-        return { ok: true, status: res.status, data: payload, error: null };
-      } catch (error) {
-        clearTimeout(timer);
-        return { ok: false, status: 0, error: String(error), data: null };
-      }
-
 
         let payload = null;
         const ctype = res.headers.get("content-type") || "";
@@ -212,8 +175,16 @@
 
         if (!res.ok) {
           const errorDetail = (payload && payload.detail) ? payload.detail : `HTTP error ${res.status}`;
+          if (res.status === 401) {
+            logout();
+          } else if (res.status === 403) {
+            try {
+              if (typeof window !== "undefined" && window.SAGE && typeof window.SAGE.toast === "function") {
+                window.SAGE.toast("Access Denied (403): " + errorDetail);
+              }
+            } catch (_) {}
+          }
           lastResult = { ok: false, status: res.status, error: errorDetail, data: null };
-          // Backend answered but with a cold-start-ish status → retry.
           if (RETRYABLE_STATUS.has(res.status) && attempt < attempts - 1) {
             await sleep(GET_BACKOFF_MS[attempt] || 5000);
             continue;
@@ -242,26 +213,6 @@
   const client = {
     getBaseUrl,
     setBaseUrl,
-
-    // 0. POST /api/auth/login — exchange credentials for a JWT
-    async login(username, password) {
-      if (!username || !password) return { ok: false, error: "Username and password required." };
-      return request("/api/auth/login", {
-        method: "POST",
-        body: { username, password },
-      });
-    },
-
-    // 0b. POST /api/auth/logout — server-side acknowledgement (token is
-    // discarded client-side; stateless JWTs cannot be revoked remotely)
-    async logout() {
-      return request("/api/auth/logout", { method: "POST" });
-    },
-
-    // 0c. GET /api/auth/me — verify the stored token is still valid
-    async me() {
-      return request("/api/auth/me");
-    },
 
     // 1. POST /api/burnin/upload
     async uploadBurnIn(file) {
@@ -385,6 +336,11 @@
         logout();
       }
       return res;
+    },
+
+    // 13b. GET /api/auth/me (alias me)
+    async me() {
+      return this.getCurrentUser();
     },
   };
 
