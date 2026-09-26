@@ -53,11 +53,19 @@ JWT_AUDIENCE = "sage-console"
 
 
 def _expire_minutes() -> int:
-    """Token TTL in minutes (SAGE_JWT_EXPIRE_MINUTES, default 60)."""
+    """Access-token TTL in minutes (SAGE_JWT_EXPIRE_MINUTES, default 60)."""
     try:
         return max(1, int(os.getenv("SAGE_JWT_EXPIRE_MINUTES", "60")))
     except ValueError:
         return 60
+
+
+def _refresh_days() -> int:
+    """Refresh-token TTL in days (SAGE_REFRESH_EXPIRE_DAYS, default 7)."""
+    try:
+        return max(1, int(os.getenv("SAGE_REFRESH_EXPIRE_DAYS", "7")))
+    except ValueError:
+        return 7
 
 
 # --- Credential settings ----------------------------------------------------
@@ -124,21 +132,47 @@ def create_access_token(
     expires_minutes: int | None = None,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
-    """Mint a signed JWT for `subject` (the username)."""
+    """Mint a short-lived HS256 JWT for `subject` (the username).
+
+    typ="access" distinguishes these from refresh tokens so a refresh
+    token can never be replayed as a credential against /api/* routes.
+    """
+    return _create_token(
+        subject,
+        minutes=expires_minutes if expires_minutes is not None else _expire_minutes(),
+        typ="access",
+        extra_claims=extra_claims,
+    )
+
+
+def create_refresh_token(
+    subject: str,
+    expires_days: int | None = None,
+) -> str:
+    """Mint a long-lived token used only to obtain new access tokens."""
+    return _create_token(subject, minutes=_refresh_days() * 24 * 60, typ="refresh")
+
+
+def _create_token(
+    subject: str,
+    minutes: int,
+    typ: str,
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
     if not JWT_SECRET:
         raise RuntimeError(
             "SAGE_JWT_SECRET is not set — refusing to mint tokens. "
             "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(48))'"
         )
     now = datetime.now(timezone.utc)
-    ttl = expires_minutes if expires_minutes is not None else _expire_minutes()
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": int(now.timestamp()),
         "nbf": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=ttl)).timestamp()),
+        "exp": int((now + timedelta(minutes=minutes)).timestamp()),
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
+        "typ": typ,
         "jti": secrets.token_hex(8),  # unique token id, useful for audit logs
     }
     if extra_claims:
@@ -146,9 +180,13 @@ def create_access_token(
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> dict[str, Any]:
-    """Decode + verify signature/exp/aud/iss. Raises jwt.* on any problem."""
-    return jwt.decode(
+def decode_token(token: str, expected_typ: str = "access") -> dict[str, Any]:
+    """Decode + verify signature/exp/aud/iss/typ. Raises jwt.* on any problem.
+
+    expected_typ stops a refresh token from being used as an access token
+    (and vice versa) even though both are signed with the same key.
+    """
+    payload = jwt.decode(
         token,
         JWT_SECRET,
         algorithms=[JWT_ALGORITHM],  # pinned — never trust the token's alg
@@ -156,6 +194,9 @@ def decode_token(token: str) -> dict[str, Any]:
         issuer=JWT_ISSUER,
         options={"require": ["exp", "sub", "iat"]},
     )
+    if payload.get("typ") != expected_typ:
+        raise jwt.InvalidTokenError(f"wrong token type: expected {expected_typ}")
+    return payload
 
 
 # --- Password helpers -------------------------------------------------------

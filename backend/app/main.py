@@ -67,8 +67,9 @@ app.add_middleware(
 # is "deny", which is the right default for a security boundary.
 
 PUBLIC_API_PREFIXES = (
-    "/api/auth/login",  # obtain a token
-    "/api/auth/logout",  # harmless either way, but keeps the UI simple
+    "/api/auth/login",   # obtain a token
+    "/api/auth/refresh",  # exchange refresh token; validates its own typ=refresh claim
+    "/api/auth/logout",   # harmless either way, but keeps the UI simple
 )
 
 

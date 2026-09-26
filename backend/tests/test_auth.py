@@ -53,10 +53,73 @@ def test_login_success_issues_verifiable_jwt(client):
     assert body["token_type"] == "bearer"
     assert body["username"] == security.AUTH_USERNAME
     assert body["expires_in"] > 0
+    assert body["refresh_token"]
     claims = security.decode_token(body["access_token"])
     assert claims["sub"] == security.AUTH_USERNAME
     assert claims["iss"] == security.JWT_ISSUER
     assert claims["aud"] == security.JWT_AUDIENCE
+    assert claims["typ"] == "access"
+    refresh_claims = security.decode_token(body["refresh_token"], expected_typ="refresh")
+    assert refresh_claims["sub"] == security.AUTH_USERNAME
+    assert refresh_claims["exp"] > claims["exp"]  # refresh outlives access
+
+
+def test_refresh_exchanges_refresh_token_for_new_access_token(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+    ).json()
+    resp = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {login['refresh_token']}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["access_token"] != login["access_token"]
+    assert body["refresh_token"] != login["refresh_token"]  # rotation
+    claims = security.decode_token(body["access_token"])
+    assert claims["sub"] == security.AUTH_USERNAME
+    assert claims["typ"] == "access"
+
+
+def test_refresh_rejects_access_token_used_as_refresh(client):
+    """A stolen access token must not work against /api/auth/refresh."""
+    login = client.post(
+        "/api/auth/login",
+        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+    ).json()
+    resp = client.post(
+        "/api/auth/refresh",
+        headers={"Authorization": f"Bearer {login['access_token']}"},
+    )
+    assert resp.status_code == 401
+
+
+def test_refresh_rejects_garbage_and_missing_tokens(client):
+    resp = client.post("/api/auth/refresh", headers={"Authorization": "Bearer not.a.jwt"})
+    assert resp.status_code == 401
+    resp = client.post("/api/auth/refresh")
+    assert resp.status_code == 401
+
+
+def test_refresh_rejects_expired_refresh_token(client):
+    expired = security.create_refresh_token("admin")
+    # Re-sign with the same claims but exp in the past by decoding/re-encoding.
+    import time as _time
+    import jwt as _jwt
+    claims = _jwt.decode(
+        expired,
+        security.JWT_SECRET,
+        algorithms=[security.JWT_ALGORITHM],
+        audience=security.JWT_AUDIENCE,
+        issuer=security.JWT_ISSUER,
+    )
+    claims["exp"] = int(_time.time()) - 10
+    expired = _jwt.encode(claims, security.JWT_SECRET, algorithm=security.JWT_ALGORITHM)
+    resp = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {expired}"})
+    assert resp.status_code == 401
 
 
 def test_login_wrong_password_401_generic_message(client):

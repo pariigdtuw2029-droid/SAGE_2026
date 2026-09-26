@@ -15,7 +15,9 @@
   "use strict";
 
   var TOKEN_KEY = "SAGE_AUTH_TOKEN";
+  var REFRESH_KEY = "SAGE_AUTH_REFRESH";
   var USER_KEY = "SAGE_AUTH_USER";
+  var _refreshInFlight = null;  // dedupes concurrent 401s into one refresh call
 
   function safeGet(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -28,17 +30,73 @@
   }
 
   function getToken() { return safeGet(TOKEN_KEY) || ""; }
+  function getRefreshToken() { return safeGet(REFRESH_KEY) || ""; }
   function getUsername() { return safeGet(USER_KEY) || ""; }
-  function isLoggedIn() { return !!getToken(); }
+  function isLoggedIn() { return !!getToken() || !!getRefreshToken(); }
 
-  function saveSession(token, username) {
-    safeSet(TOKEN_KEY, token);
+  function saveSession(token, refresh, username) {
+    if (token) safeSet(TOKEN_KEY, token);
+    if (refresh) safeSet(REFRESH_KEY, refresh);
     if (username) safeSet(USER_KEY, username);
   }
 
   function clearSession() {
     safeRemove(TOKEN_KEY);
+    safeRemove(REFRESH_KEY);
     safeRemove(USER_KEY);
+  }
+
+  /* ---------------- transparent token refresh ----------------
+   * When an API call 401s (access token expired) and we hold a refresh
+   * token, silently POST /api/auth/refresh, swap both tokens, and replay
+   * the original request once. The user never sees a re-login unless the
+   * refresh token itself has expired (default: 7 days).
+   */
+  function rawFetch(path, options) {
+    var base = (global.SAGEAPI && global.SAGEAPI.getBaseUrl()) || "";
+    var url = base + (path.charAt(0) === "/" ? "" : "/") + path;
+    var init = options || {};
+    init.headers = Object.assign({}, init.headers || {});
+    if (init.body && typeof init.body === "object" && !(init.body instanceof FormData) && !(init.body instanceof Blob)) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(init.body);
+    }
+    return nativeFetch(url, init);
+  }
+  var nativeFetch = global.fetch.bind(global);
+
+  async function refreshAccessToken() {
+    if (_refreshInFlight) return _refreshInFlight;  // one flight per burst
+    _refreshInFlight = (async function () {
+      var rt = getRefreshToken();
+      if (!rt) return false;
+      try {
+        var res = await rawFetch("/api/auth/refresh", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + rt },
+        });
+        if (!res.ok) return false;
+        var data = await res.json();
+        if (!data || !data.access_token) return false;
+        saveSession(data.access_token, data.refresh_token);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    })();
+    var ok = await _refreshInFlight;
+    _refreshInFlight = null;
+    return ok;
+  }
+
+  async function fetchWithRetry(url, init) {
+    var res = await nativeFetch(url, init);
+    if (res.status !== 401 || !getRefreshToken()) return res;
+    if (init && init.__retried) return res;
+    var ok = await refreshAccessToken();
+    if (!ok) return res;  // caller sees the 401 and clears the session
+    var retryInit = Object.assign({}, init, { __retried: true });
+    return nativeFetch(url, retryInit);
   }
 
   /* ---------------- login gate (injected overlay) ---------------- */
@@ -89,7 +147,7 @@
     if (btn) { btn.disabled = false; btn.textContent = "Sign in"; }
 
     if (res && res.ok && res.data && res.data.access_token) {
-      saveSession(res.data.access_token, res.data.username);
+      saveSession(res.data.access_token, res.data.refresh_token, res.data.username);
       var gate = document.getElementById("sageLoginGate");
       if (gate) gate.remove();
       document.dispatchEvent(new CustomEvent("sage:login"));
@@ -159,11 +217,9 @@
   }
 
   function patchRequestHeaders() {
-    var api = global.SAGEAPI;
-    if (!api) return;
-    // api.js builds headers per request; the simplest robust hook is to wrap
-    // window.fetch and inject Authorization for same-API calls that lack it.
-    var nativeFetch = global.fetch;
+    // Wrap window.fetch: inject the bearer token into same-API calls that
+    // lack one, and transparently retry once after a successful refresh
+    // when a call comes back 401 (access token expired mid-session).
     global.fetch = function (input, init) {
       try {
         var url = typeof input === "string" ? input : (input && input.url) || "";
@@ -174,8 +230,9 @@
           headers.Authorization = "Bearer " + getToken();
           init = Object.assign({}, init || {}, { headers: headers });
         }
+        if (isApi) return fetchWithRetry(url, init);
       } catch (_) {}
-      return nativeFetch.call(global, input, init);
+      return nativeFetch(input, init);
     };
   }
 
@@ -185,10 +242,12 @@
 
   global.SAGEAuth = {
     getToken: getToken,
+    getRefreshToken: getRefreshToken,
     getUsername: getUsername,
     isLoggedIn: isLoggedIn,
     saveSession: saveSession,
     clearSession: clearSession,
+    refreshAccessToken: refreshAccessToken,
     requireLogin: requireLogin,
     logout: logout,
   };
