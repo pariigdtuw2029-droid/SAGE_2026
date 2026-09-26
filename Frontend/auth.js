@@ -153,9 +153,10 @@
 
     if (res && res.ok && res.data && res.data.access_token) {
       saveSession(res.data.access_token, res.data.refresh_token, res.data.username, res.data.role);
-      var gate = document.getElementById("sageLoginGate");
-      if (gate) gate.remove();
-      document.dispatchEvent(new CustomEvent("sage:login"));
+      // Reload so page scripts refetch data — they ran before we had a token
+      // and the ones already showing an error/empty state don't listen for
+      // login events.
+      location.reload();
       return true;
     }
     showError((res && res.error) || "Login failed — check your credentials and backend URL.");
