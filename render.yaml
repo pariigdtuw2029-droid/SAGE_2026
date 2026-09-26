@@ -27,14 +27,11 @@ services:
       # persistent disk: user CSV uploads are ephemeral, the baked dataset is not).
       - key: DATABASE_URL
         value: sqlite:////opt/render/project/src/backend/astra_guard.db
-      # --- JWT auth (app/security.py) — set these in the Render dashboard,
-      # NOT here, so the secret never lands in this committed file:
-      #   SAGE_JWT_SECRET       (python -c "import secrets; print(secrets.token_urlsafe(48))")
-      #   SAGE_AUTH_USERNAME    (default: admin)
-      #   SAGE_AUTH_PASSWORD    (or SAGE_AUTH_PASSWORD_HASH with a bcrypt string)
+      # --- JWT auth (app/core/security.py) — set these in the Render
+      # dashboard, NOT here, so the secret never lands in this committed file:
+      #   SAGE_JWT_SECRET   (python -c "import secrets; print(secrets.token_urlsafe(48))")
+      #   SAGE_ACCESS_TOKEN_EXPIRE_MINUTES (optional, default 480 = 8 h)
+      # Users/roles now live in the DB (seeded: admin/engineer/reviewer),
+      # so SAGE_AUTH_USERNAME / SAGE_AUTH_PASSWORD are no longer used.
       - key: SAGE_JWT_SECRET
-        sync: false
-      - key: SAGE_AUTH_USERNAME
-        sync: false
-      - key: SAGE_AUTH_PASSWORD
         sync: false

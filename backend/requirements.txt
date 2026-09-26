@@ -34,4 +34,4 @@ shap>=0.44
 
 # --- Phase 12: Authentication layer (JWT + password hashing) ---
 pyjwt>=2.8.0
-bcrypt>=4.0.0\n
+bcrypt>=4.0.0
