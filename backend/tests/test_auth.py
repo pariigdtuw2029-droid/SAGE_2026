@@ -195,3 +195,71 @@ def test_missing_jwt_secret_raises_runtime_error(monkeypatch):
     with pytest.raises(RuntimeError):
         validate_security_config()
 
+
+# Test 12 — Login brute-force rate limiting (Phase 12.2)
+def _reset_rate_limiter():
+    """The limiter is shared in-memory state — reset it so tests are order-independent."""
+    from app.services import auth_service
+    auth_service._failed_logins.clear()
+
+
+def test_failed_logins_lock_out_after_max_attempts(client: TestClient):
+    """LOGIN_MAX_FAILED_ATTEMPTS consecutive failures from one IP -> 429."""
+    _reset_rate_limiter()
+    from app.services import auth_service
+
+    for i in range(auth_service.LOGIN_MAX_FAILED_ATTEMPTS):
+        resp = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": f"wrong-{i}"},
+        )
+        assert resp.status_code == 401, f"attempt {i} should be 401, got {resp.status_code}"
+
+    # Budget exhausted: even CORRECT credentials are now rejected with 429.
+    resp = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "sage2026"},
+    )
+    assert resp.status_code == 429
+    assert "Too many failed login attempts" in resp.json()["detail"]
+    assert "Retry-After" in resp.headers
+    assert int(resp.headers["Retry-After"]) > 0
+
+
+def test_rate_limit_resets_after_successful_login(client: TestClient):
+    """A successful login clears the IP's failed-login budget."""
+    _reset_rate_limiter()
+    from app.services import auth_service
+
+    # Rack up failures just below the lockout threshold.
+    for i in range(auth_service.LOGIN_MAX_FAILED_ATTEMPTS - 1):
+        client.post("/api/auth/login", json={"username": "admin", "password": f"wrong-{i}"})
+
+    resp = client.post("/api/auth/login", json={"username": "admin", "password": "sage2026"})
+    assert resp.status_code == 200
+
+    # Budget was cleared: another run of failures still gets 401s, not 429.
+    for i in range(auth_service.LOGIN_MAX_FAILED_ATTEMPTS - 1):
+        resp = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": f"again-{i}"},
+        )
+        assert resp.status_code == 401, f"got {resp.status_code} after clean success"
+
+
+def test_unknown_username_also_counts_toward_limit(client: TestClient):
+    """Guessing nonexistent usernames burns the same budget (no oracle)."""
+    _reset_rate_limiter()
+    from app.services import auth_service
+
+    for i in range(auth_service.LOGIN_MAX_FAILED_ATTEMPTS):
+        client.post(
+            "/api/auth/login",
+            json={"username": f"ghost-user-{i}", "password": "whatever"},
+        )
+    resp = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "sage2026"},
+    )
+    assert resp.status_code == 429
+

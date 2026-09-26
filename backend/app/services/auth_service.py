@@ -5,6 +5,8 @@ Team: BINARY BADDIES
 """
 
 import logging
+import time
+from collections import defaultdict
 from typing import Optional
 
 from sqlalchemy import select, func, inspect, text
@@ -21,6 +23,48 @@ DEFAULT_DEMO_USERNAME = "admin"
 DEFAULT_DEMO_PASSWORD = "sage2026"
 DEFAULT_DEMO_FULL_NAME = "SAGE Test Engineer"
 DEFAULT_DEMO_ROLE = "admin"
+
+# --- Login brute-force protection (Phase 12.2) -------------------------------
+# In-memory sliding-window lockout, keyed by client IP: after
+# LOGIN_MAX_FAILED_ATTEMPTS failed logins within LOGIN_WINDOW_SECONDS,
+# further attempts from that IP are rejected with 429 until the window
+# rolls off. Cleared for the IP on a successful login. Single-process
+# scope is deliberate: the API runs as one uvicorn worker on Render.
+LOGIN_MAX_FAILED_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+_failed_logins: dict[str, list[float]] = defaultdict(list)
+
+
+def is_login_rate_limited(client_ip: str) -> bool:
+    """True if this IP has exhausted its failed-login budget in the window."""
+    now = time.monotonic()
+    attempts = [t for t in _failed_logins.get(client_ip, []) if now - t < LOGIN_WINDOW_SECONDS]
+    _failed_logins[client_ip] = attempts  # drop expired entries
+    return len(attempts) >= LOGIN_MAX_FAILED_ATTEMPTS
+
+
+def record_failed_login(client_ip: str) -> int:
+    """Record a failed login for this IP; returns current failure count."""
+    now = time.monotonic()
+    attempts = [t for t in _failed_logins.get(client_ip, []) if now - t < LOGIN_WINDOW_SECONDS]
+    attempts.append(now)
+    _failed_logins[client_ip] = attempts
+    return len(attempts)
+
+
+def clear_failed_logins(client_ip: str) -> None:
+    """Reset the failed-login budget for this IP (called on success)."""
+    _failed_logins.pop(client_ip, None)
+
+
+def login_retry_after_seconds(client_ip: str) -> int:
+    """Seconds until this IP may retry (for the 429 Retry-After header)."""
+    attempts = _failed_logins.get(client_ip, [])
+    if not attempts:
+        return 0
+    oldest = min(attempts)
+    remaining = int(LOGIN_WINDOW_SECONDS - (time.monotonic() - oldest)) + 1
+    return max(remaining, 1)
 
 
 def init_auth_db(target_engine=None) -> None:

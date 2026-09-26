@@ -179,10 +179,31 @@ def login(req: Request, request: LoginRequest):
     password = request.password
     client_ip = audit_service.get_client_ip(req)
 
+    # Brute-force guard: reject IPs that exhausted their failed-login budget
+    # before doing any credential work.
+    if auth_service.is_login_rate_limited(client_ip):
+        logger.warning("Login rate-limited for IP %s (username attempted: %s)", client_ip, username)
+        audit_service.record_audit_event(
+            event_type="LOGIN",
+            event_status="FAILURE",
+            endpoint="/api/auth/login",
+            http_method="POST",
+            username=username,
+            role=None,
+            client_ip=client_ip,
+            details={"reason": "Rate limited"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+            headers={"Retry-After": str(auth_service.login_retry_after_seconds(client_ip))},
+        )
+
     user = auth_service.authenticate_user(username, password)
     if not user:
         logger.info("Failed login attempt for user: %s", username)
         attempted_user = auth_service.get_user_by_username(username)
+        auth_service.record_failed_login(client_ip)
         audit_service.record_audit_event(
             event_type="LOGIN",
             event_status="FAILURE",
@@ -200,6 +221,7 @@ def login(req: Request, request: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    auth_service.clear_failed_logins(client_ip)
     audit_service.record_audit_event(
         event_type="LOGIN",
         event_status="SUCCESS",
