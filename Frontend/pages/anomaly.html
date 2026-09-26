@@ -8,6 +8,84 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <!-- Error / Loading state container -->
+    <div id="stateView" style="display:none;"></div>
+
+    <!-- Main analysis view -->
+    <div id="analysisView">
+      <div class="kpi-row" id="kpis"></div>
+
+      <div class="grid-2">
+        <section class="box">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <h2 class="box-title">Anomaly vs Drift Dispersion</h2>
+              <p class="box-sub">Y: Module A Anomaly Score · X: Module B Drift Score · Color: Decision</p>
+            </div>
+            <span class="badge neutral" id="scatterCountBadge">0 pts</span>
+          </div>
+          <canvas class="chart" id="scatter"></canvas>
+          <div class="legend" style="margin-top:10px;">
+            <span class="item"><span class="dot safe"></span> Pass</span>
+            <span class="item"><span class="dot monitor"></span> Monitor</span>
+            <span class="item"><span class="dot hold"></span> Hold</span>
+            <span class="item"><span class="dot reject"></span> Reject</span>
+            <span class="item" style="color:var(--reject);"><span style="display:inline-block;width:12px;border-top:1px dashed var(--reject);vertical-align:middle;margin-right:4px;"></span> Threshold</span>
+          </div>
+        </section>
+
+        <section class="box">
+          <h2 class="box-title">Lot Screening Decision Distribution</h2>
+          <p class="box-sub">Authentic qualification status for selected lot</p>
+          <canvas class="chart" id="distDonut"></canvas>
+          <div class="legend" id="distLegend" style="margin-top:10px;"></div>
+        </section>
+      </div>
+
+      <section class="box">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+          <div>
+            <h2 class="box-title" style="margin:0;">Ranked Anomaly Registry</h2>
+            <p class="box-sub" style="margin:0;">Live component screening records sorted by anomaly score descending · click row for full engineering telemetry</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="box-sub" id="tableCount" style="margin:0;">0 components</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="topTable">
+            <thead>
+              <tr>
+                <th>Component ID</th>
+                <th>Anomaly Score</th>
+                <th>Drift Score</th>
+                <th>Risk Score</th>
+                <th>Risk Level</th>
+                <th>Decision</th>
+                <th>Reliability Tier</th>
+                <th>Lot Identifier</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="../api.js"></script>
+<script src="../auth.js"></script>
+<script src="../app.js"></script>
+
 <script>
   (function() {
     const params = new URLSearchParams(window.location.search);

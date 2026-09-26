@@ -195,6 +195,7 @@
     const el = document.getElementById("sidebar");
     if (!el) return;
     const here = location.pathname.split("/").pop();
+    const authed = window.SAGEAuth && window.SAGEAuth.isLoggedIn();
     el.innerHTML = `
       <a class="sidebar-brand" href="../index.html">
         <img src="../assets/brand/logo.png" alt="" />
@@ -209,7 +210,16 @@
             </a>`).join("")}
         </nav>`).join("")}
       <div class="sidebar-foot">SAGE console · model sage-1.1</div>
+      ${authed ? `<a href="#" class="sidebar-logout" id="sidebarLogout">Sign out — ${window.SAGEAuth.getUsername() || "admin"} · ${window.SAGEAuth.getRole() || "admin"}</a>` : ""}
+
     `;
+    const logoutLink = document.getElementById("sidebarLogout");
+    if (logoutLink) {
+      logoutLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        window.SAGEAuth.logout();
+      });
+    }
   }
 
   /* ---------------- chrome helpers ---------------- */
@@ -913,6 +923,10 @@
   };
 
   /* ---------------- export ---------------- */
+  // Gate console pages behind the login screen when not authenticated.
+  // Runs before page scripts read data so the UI never renders unauthed.
+  if (window.SAGEAuth) window.SAGEAuth.requireLogin();
+
   window.SAGE = {
     data: api, COLORS,
     renderSidebar, topbar, toast, param, dotFor, badge,
@@ -922,4 +936,7 @@
   if (window.SAGEAPI && !window.SAGEAPI.sage) {
     window.SAGEAPI.sage = window.SAGE;
   }
+
+  // Re-run the gate in case app.js loaded before auth.js finished patching.
+  if (window.SAGEAuth) window.SAGEAuth.requireLogin();
 })();

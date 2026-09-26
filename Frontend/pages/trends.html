@@ -8,6 +8,75 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="console">
+    <div class="console-top" id="consoleTop"></div>
+
+    <!-- State View (loading / error / 404) -->
+    <div id="stateView" style="display:none;"></div>
+
+    <!-- Main Analysis Content -->
+    <div id="analysisView">
+      <!-- Metadata Ribbon -->
+      <section class="box" id="metaRibbon" style="padding:12px 18px;margin-bottom:16px;"></section>
+
+      <!-- KPI Row -->
+      <div class="kpi-row" id="kpis"></div>
+
+      <!-- Primary Trajectory Chart -->
+      <section class="box">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h2 class="box-title" id="chartTitle">Parameter Drift Trajectory</h2>
+            <p class="box-sub">Solid line = measured checkpoints (0h, 24h, 96h, 168h) · ringed marker = 168h degradation forecast</p>
+          </div>
+          <span class="badge safe" style="font-size:10px;">TELEMETRY ACTIVE</span>
+        </div>
+        <canvas class="chart" id="traj"></canvas>
+        <div class="legend" id="trajLegend" style="margin-top:12px;"></div>
+      </section>
+
+      <div class="grid-2">
+        <!-- Checkpoint Telemetry Table -->
+        <section class="box">
+          <h2 class="box-title">Burn-In Telemetry Checkpoints</h2>
+          <p class="box-sub">Measured values from real test telemetry and forecast delta</p>
+          <div class="table-wrap">
+            <table class="data" id="cpTable">
+              <thead>
+                <tr>
+                  <th>Checkpoint</th>
+                  <th>Type</th>
+                  <th>Value</th>
+                  <th>Drift from 0h</th>
+                  <th>Limit</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Lot Screening Context (Truthful Replacement for Fake Drift Ranking) -->
+        <section class="box">
+          <h2 class="box-title" id="lotContextTitle">Lot Screening Context</h2>
+          <p class="box-sub">Parent lot qualification summary from live database</p>
+          <div id="lotContextBody" style="margin-top:12px;"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../api.js"></script>
+<script src="../auth.js"></script>
+<script src="../app.js"></script>
+
 <script>
   (function() {
     const params = new URLSearchParams(window.location.search);
