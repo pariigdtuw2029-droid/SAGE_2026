@@ -102,6 +102,26 @@
     getBaseUrl,
     setBaseUrl,
 
+    // 0. POST /api/auth/login — exchange credentials for a JWT
+    async login(username, password) {
+      if (!username || !password) return { ok: false, error: "Username and password required." };
+      return request("/api/auth/login", {
+        method: "POST",
+        body: { username, password },
+      });
+    },
+
+    // 0b. POST /api/auth/logout — server-side acknowledgement (token is
+    // discarded client-side; stateless JWTs cannot be revoked remotely)
+    async logout() {
+      return request("/api/auth/logout", { method: "POST" });
+    },
+
+    // 0c. GET /api/auth/me — verify the stored token is still valid
+    async me() {
+      return request("/api/auth/me");
+    },
+
     // 1. POST /api/burnin/upload
     async uploadBurnIn(file) {
       if (!file) return { ok: false, error: "No file selected." };

@@ -8,6 +8,12 @@ services:
       - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
       # SQLite inside the container; mount a volume to persist it
       - DATABASE_URL=sqlite:////app/backend/backend/astra_guard.db
+      # JWT auth — override via a .env file next to docker-compose.yml or
+      # an export; do NOT bake real credentials into this committed file.
+      # Generate a secret: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      - SAGE_JWT_SECRET=${SAGE_JWT_SECRET:?Set SAGE_JWT_SECRET in your shell or .env}
+      - SAGE_AUTH_USERNAME=${SAGE_AUTH_USERNAME:-admin}
+      - SAGE_AUTH_PASSWORD=${SAGE_AUTH_PASSWORD:?Set SAGE_AUTH_PASSWORD in your shell or .env}
     volumes:
       - sage_db:/app/backend/backend
     restart: unless-stopped

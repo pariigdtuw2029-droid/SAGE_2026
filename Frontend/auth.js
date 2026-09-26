@@ -1,0 +1,196 @@
+/**
+ * SAGE — Frontend auth layer
+ * Smart India Hackathon 2026 | Team BINARY BADDIES
+ *
+ * JWT session handling for the console:
+ *  - stores the bearer token in localStorage (SAGE_AUTH_TOKEN)
+ *  - auto-attaches Authorization: Bearer <token> to every SAGEAPI request
+ *  - on a 401 from any API call, clears the session and shows the login gate
+ *  - SAGEAuth.requireLogin() gates every console page (pages/*.html)
+ *  - SAGEAuth.logout() calls POST /api/auth/logout and returns to the gate
+ *
+ * The landing page (../index.html) stays public; only pages/ require auth.
+ */
+(function (global) {
+  "use strict";
+
+  var TOKEN_KEY = "SAGE_AUTH_TOKEN";
+  var USER_KEY = "SAGE_AUTH_USER";
+
+  function safeGet(key) {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
+  function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  }
+  function safeRemove(key) {
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+
+  function getToken() { return safeGet(TOKEN_KEY) || ""; }
+  function getUsername() { return safeGet(USER_KEY) || ""; }
+  function isLoggedIn() { return !!getToken(); }
+
+  function saveSession(token, username) {
+    safeSet(TOKEN_KEY, token);
+    if (username) safeSet(USER_KEY, username);
+  }
+
+  function clearSession() {
+    safeRemove(TOKEN_KEY);
+    safeRemove(USER_KEY);
+  }
+
+  /* ---------------- login gate (injected overlay) ---------------- */
+
+  function ensureGate() {
+    var gate = document.getElementById("sageLoginGate");
+    if (gate) return gate;
+    gate = document.createElement("div");
+    gate.id = "sageLoginGate";
+    gate.innerHTML =
+      '<div class="sage-login-card">' +
+      '  <div class="sage-login-brand">' +
+      '    <img src="../assets/brand/logo.png" alt="" onerror="this.style.display=\'none\'" />' +
+      '    <span>SAGE</span>' +
+      '  </div>' +
+      '  <h1>Restricted console</h1>' +
+      '  <p class="sage-login-sub">Sign in to access the inspection platform.</p>' +
+      '  <form id="sageLoginForm">' +
+      '    <label class="sage-login-label" for="sageLoginUser">Username</label>' +
+      '    <input class="sage-login-input" id="sageLoginUser" name="username" autocomplete="username" required />' +
+      '    <label class="sage-login-label" for="sageLoginPass">Password</label>' +
+      '    <input class="sage-login-input" id="sageLoginPass" name="password" type="password" autocomplete="current-password" required />' +
+      '    <button class="sage-login-btn" id="sageLoginBtn" type="submit">Sign in</button>' +
+      '    <div class="sage-login-error" id="sageLoginError" hidden></div>' +
+      '  </form>' +
+      '</div>';
+    document.body.appendChild(gate);
+    return gate;
+  }
+
+  function showError(msg) {
+    var el = document.getElementById("sageLoginError");
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  }
+
+  async function handleLoginSubmit(event, api) {
+    event.preventDefault();
+    var btn = document.getElementById("sageLoginBtn");
+    var userEl = document.getElementById("sageLoginUser");
+    var passEl = document.getElementById("sageLoginPass");
+    var errEl = document.getElementById("sageLoginError");
+    if (errEl) errEl.hidden = true;
+    if (btn) { btn.disabled = true; btn.textContent = "Signing in…"; }
+
+    var res = await api.login(userEl.value.trim(), passEl.value);
+    if (btn) { btn.disabled = false; btn.textContent = "Sign in"; }
+
+    if (res && res.ok && res.data && res.data.access_token) {
+      saveSession(res.data.access_token, res.data.username);
+      var gate = document.getElementById("sageLoginGate");
+      if (gate) gate.remove();
+      document.dispatchEvent(new CustomEvent("sage:login"));
+      return true;
+    }
+    showError((res && res.error) || "Login failed — check your credentials and backend URL.");
+    return false;
+  }
+
+  /**
+   * Call at the top of every console page script. Returns immediately when
+   * already logged in; otherwise covers the page with the login gate.
+   */
+  function requireLogin() {
+    var api = global.SAGEAPI;
+    if (!api) return;
+    if (isLoggedIn()) return;
+    var gate = ensureGate();
+    gate.classList.add("show");
+    var form = document.getElementById("sageLoginForm");
+    form.addEventListener("submit", function (e) { handleLoginSubmit(e, api); });
+  }
+
+  /* ---------------- logout ---------------- */
+
+  async function logout() {
+    var api = global.SAGEAPI;
+    clearSession();
+    try { if (api) await api.logout(); } catch (_) {}  // best-effort; token is gone either way
+    location.href = location.pathname.split("/").pop() || "index.html";
+  }
+
+  /* ---------------- wire into the API client ---------------- */
+
+  function patchApi() {
+    var api = global.SAGEAPI;
+    if (!api || api.__authPatched) return;
+
+    // Wrap every verb-bearing client method so the bearer token rides along.
+    var methods = [
+      "uploadBurnIn", "getLots", "getLot", "getLotSummary", "getComponent",
+      "getComponentTrajectory", "getAlerts", "getComponentReport",
+      "checkHealth", "getLotComponents",
+    ];
+    methods.forEach(function (name) {
+      var original = api[name];
+      if (typeof original !== "function") return;
+      api[name] = function () {
+        var args = Array.prototype.slice.call(arguments);
+        return original.apply(api, args).then(function (res) {
+          if (res && res.status === 401) {
+            clearSession();
+            if (typeof api.onUnauthorized === "function") api.onUnauthorized();
+          }
+          return res;
+        });
+      };
+    });
+
+    api.setToken = function (token) { saveSession(token, getUsername()); };
+    api.getToken = getToken;
+    api.onUnauthorized = function () {
+      if (document.getElementById("sageLoginGate")) return;  // gate already up
+      requireLogin();
+    };
+    api.__authPatched = true;
+  }
+
+  function patchRequestHeaders() {
+    var api = global.SAGEAPI;
+    if (!api) return;
+    // api.js builds headers per request; the simplest robust hook is to wrap
+    // window.fetch and inject Authorization for same-API calls that lack it.
+    var nativeFetch = global.fetch;
+    global.fetch = function (input, init) {
+      try {
+        var url = typeof input === "string" ? input : (input && input.url) || "";
+        var isApi = /\/api\//.test(url) || /\/health$/.test(url);
+        var hasAuth = !!(init && init.headers && init.headers.Authorization);
+        if (isApi && !hasAuth && getToken()) {
+          var headers = Object.assign({}, (init && init.headers) || {});
+          headers.Authorization = "Bearer " + getToken();
+          init = Object.assign({}, init || {}, { headers: headers });
+        }
+      } catch (_) {}
+      return nativeFetch.call(global, input, init);
+    };
+  }
+
+  patchRequestHeaders();
+  if (global.SAGEAPI) patchApi();
+  else document.addEventListener("DOMContentLoaded", patchApi);
+
+  global.SAGEAuth = {
+    getToken: getToken,
+    getUsername: getUsername,
+    isLoggedIn: isLoggedIn,
+    saveSession: saveSession,
+    clearSession: clearSession,
+    requireLogin: requireLogin,
+    logout: logout,
+  };
+  if (global.SAGE) global.SAGE.auth = global.SAGEAuth;
+})(typeof window !== "undefined" ? window : this);
