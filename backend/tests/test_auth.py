@@ -32,9 +32,15 @@ def token():
 
 
 def _login_password():
-    """The plaintext password conftest.py exported as SAGE_AUTH_PASSWORD."""
+    """The admin password conftest.py exported via SAGE_USERS."""
     import os
-    return os.environ.get("SAGE_AUTH_PASSWORD", "test-password-123")
+    return "test-password-123"
+
+
+def _login(username, password):
+    return TestClient(app).post(
+        "/api/auth/login", json={"username": username, "password": password}
+    ).json()
 
 
 def _auth(tok):
@@ -46,28 +52,28 @@ def _auth(tok):
 def test_login_success_issues_verifiable_jwt(client):
     resp = client.post(
         "/api/auth/login",
-        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+        json={"username": "admin", "password": _login_password()},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["token_type"] == "bearer"
-    assert body["username"] == security.AUTH_USERNAME
+    assert body["username"] == "admin"
     assert body["expires_in"] > 0
     assert body["refresh_token"]
     claims = security.decode_token(body["access_token"])
-    assert claims["sub"] == security.AUTH_USERNAME
+    assert claims["sub"] == "admin"
     assert claims["iss"] == security.JWT_ISSUER
     assert claims["aud"] == security.JWT_AUDIENCE
     assert claims["typ"] == "access"
     refresh_claims = security.decode_token(body["refresh_token"], expected_typ="refresh")
-    assert refresh_claims["sub"] == security.AUTH_USERNAME
+    assert refresh_claims["sub"] == "admin"
     assert refresh_claims["exp"] > claims["exp"]  # refresh outlives access
 
 
 def test_refresh_exchanges_refresh_token_for_new_access_token(client):
     login = client.post(
         "/api/auth/login",
-        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+        json={"username": "admin", "password": _login_password()},
     ).json()
     resp = client.post(
         "/api/auth/refresh",
@@ -80,7 +86,7 @@ def test_refresh_exchanges_refresh_token_for_new_access_token(client):
     assert body["access_token"] != login["access_token"]
     assert body["refresh_token"] != login["refresh_token"]  # rotation
     claims = security.decode_token(body["access_token"])
-    assert claims["sub"] == security.AUTH_USERNAME
+    assert claims["sub"] == "admin"
     assert claims["typ"] == "access"
 
 
@@ -88,7 +94,7 @@ def test_refresh_rejects_access_token_used_as_refresh(client):
     """A stolen access token must not work against /api/auth/refresh."""
     login = client.post(
         "/api/auth/login",
-        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+        json={"username": "admin", "password": _login_password()},
     ).json()
     resp = client.post(
         "/api/auth/refresh",
@@ -125,7 +131,7 @@ def test_refresh_rejects_expired_refresh_token(client):
 def test_login_wrong_password_401_generic_message(client):
     resp = client.post(
         "/api/auth/login",
-        json={"username": security.AUTH_USERNAME, "password": "definitely-wrong"},
+        json={"username": "admin", "password": "definitely-wrong"},
     )
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Invalid username or password."
@@ -147,7 +153,7 @@ def test_login_rate_limited_after_repeated_failures(client):
         client.post("/api/auth/login", json={"username": "admin", "password": "bad"})
     resp = client.post(
         "/api/auth/login",
-        json={"username": security.AUTH_USERNAME, "password": _login_password()},
+        json={"username": "admin", "password": _login_password()},
     )
     assert resp.status_code == 429
 
@@ -226,6 +232,75 @@ def test_login_endpoint_itself_stays_public(client):
     resp = client.post("/api/auth/login", json={"username": "admin", "password": "nope"})
     assert resp.status_code == 401
     assert "authenticate" not in resp.json()["detail"].lower()
+
+
+# --- roles (admin / engineer / reviewer) ---------------------------------------
+
+def _user_token(username, password):
+    body = _login(username, password)
+    assert body.get("access_token"), body
+    return body["access_token"]
+
+
+def test_login_returns_role_claim(client):
+    for username, password, role in [
+        ("admin", "test-password-123", "admin"),
+        ("engineer", "eng-test-pass", "engineer"),
+        ("reviewer", "rev-test-pass", "reviewer"),
+    ]:
+        resp = client.post("/api/auth/login", json={"username": username, "password": password})
+        assert resp.status_code == 200, username
+        body = resp.json()
+        assert body["role"] == role
+        claims = security.decode_token(body["access_token"])
+        assert claims["role"] == role
+
+
+def test_unknown_role_demotes_to_reviewer():
+    users = security._parse_users("bob:pw:superuser")
+    assert users["bob"]["role"] == "reviewer"
+
+
+def test_reviewer_cannot_upload_but_can_read(client):
+    tok = _user_token("reviewer", "rev-test-pass")
+    # Upload is a write -> 403 even with a valid token.
+    resp = client.post(
+        "/api/burnin/upload",
+        headers=_auth(tok),
+        files={"file": ("data.csv", b"a,b\n1,2\n", "text/csv")},
+    )
+    assert resp.status_code == 403
+    # Reads stay available to reviewers.
+    assert client.get("/api/lots", headers=_auth(tok)).status_code == 200
+    assert client.get("/api/alerts", headers=_auth(tok)).status_code == 200
+
+
+def test_engineer_can_upload_and_read(client):
+    tok = _user_token("engineer", "eng-test-pass")
+    resp = client.post(
+        "/api/burnin/upload",
+        headers=_auth(tok),
+        files={"file": ("data.csv", b"a,b\n1,2\n", "text/csv")},
+    )
+    assert resp.status_code == 200
+    assert client.get("/api/lots", headers=_auth(tok)).status_code == 200
+
+
+def test_admin_can_upload(client):
+    tok = _user_token("admin", "test-password-123")
+    resp = client.post(
+        "/api/burnin/upload",
+        headers=_auth(tok),
+        files={"file": ("data.csv", b"a,b\n1,2\n", "text/csv")},
+    )
+    assert resp.status_code == 200
+
+
+def test_me_returns_role(client):
+    tok = _user_token("reviewer", "rev-test-pass")
+    resp = client.get("/api/auth/me", headers=_auth(tok))
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "reviewer"
 
 
 # --- token shape ----------------------------------------------------------------

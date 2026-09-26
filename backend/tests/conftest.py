@@ -13,11 +13,13 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_db_path}"
 
 # JWT auth must be configured for the API-contract tests to reach the data
 # endpoints; fixed test credentials keep behaviour deterministic and don't
-# depend on a developer's local .env.
+# depend on a developer's local .env. One user per role exercises RBAC.
 os.environ.setdefault("SAGE_JWT_SECRET", "test-secret-not-used-in-production-0123456789abcdef")
 os.environ.setdefault("SAGE_JWT_EXPIRE_MINUTES", "30")
-os.environ.setdefault("SAGE_AUTH_USERNAME", "admin")
-os.environ.setdefault("SAGE_AUTH_PASSWORD", "test-password-123")
+os.environ.setdefault(
+    "SAGE_USERS",
+    "admin:test-password-123:admin,engineer:eng-test-pass:engineer,reviewer:rev-test-pass:reviewer",
+)
 
 from app.main import app
 from app import security

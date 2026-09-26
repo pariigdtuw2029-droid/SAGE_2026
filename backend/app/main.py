@@ -15,7 +15,7 @@ from app.api.lots import router as lots_router
 from app.api.components import router as components_router
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
-from app.security import decode_token
+from app.security import decode_token, get_user_role
 
 logger = logging.getLogger("sage")
 
@@ -87,7 +87,7 @@ async def jwt_auth_middleware(request: Request, call_next):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         try:
-            request.state.user = decode_token(auth_header[len("Bearer "):])
+            claims = decode_token(auth_header[len("Bearer "):])
         except Exception:
             # Expired, tampered, malformed — one generic rejection either way.
             return JSONResponse(
@@ -95,6 +95,20 @@ async def jwt_auth_middleware(request: Request, call_next):
                 content={"detail": "Invalid or expired token."},
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        # --- role gate -----------------------------------------------------
+        # Write operations (upload / ingest) are limited to admins and
+        # engineers; reviewers get read-only access to the data API.
+        role = (claims.get("role") or "reviewer").lower()
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and role not in (
+            "admin",
+            "engineer",
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Forbidden — reviewers have read-only access."},
+            )
+        request.state.user = claims
     return await call_next(request)
 
 

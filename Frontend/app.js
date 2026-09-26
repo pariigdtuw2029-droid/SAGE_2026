@@ -213,7 +213,7 @@
             </a>`).join("")}
         </nav>`).join("")}
       <div class="sidebar-foot">SAGE console · model sage-1.0</div>
-      ${authed ? `<a href="#" class="sidebar-logout" id="sidebarLogout">Sign out (${window.SAGEAuth.getUsername() || "admin"})</a>` : ""}
+      ${authed ? `<a href="#" class="sidebar-logout" id="sidebarLogout">Sign out — ${window.SAGEAuth.getUsername() || "admin"} · ${window.SAGEAuth.getRole() || "admin"}</a>` : ""}
     `;
     const logoutLink = document.getElementById("sidebarLogout");
     if (logoutLink) {

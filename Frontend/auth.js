@@ -29,21 +29,26 @@
     try { localStorage.removeItem(key); } catch (_) {}
   }
 
+  var ROLE_KEY = "SAGE_AUTH_ROLE";
+
   function getToken() { return safeGet(TOKEN_KEY) || ""; }
   function getRefreshToken() { return safeGet(REFRESH_KEY) || ""; }
   function getUsername() { return safeGet(USER_KEY) || ""; }
+  function getRole() { return safeGet(ROLE_KEY) || ""; }
   function isLoggedIn() { return !!getToken() || !!getRefreshToken(); }
 
-  function saveSession(token, refresh, username) {
+  function saveSession(token, refresh, username, role) {
     if (token) safeSet(TOKEN_KEY, token);
     if (refresh) safeSet(REFRESH_KEY, refresh);
     if (username) safeSet(USER_KEY, username);
+    if (role) safeSet(ROLE_KEY, role);
   }
 
   function clearSession() {
     safeRemove(TOKEN_KEY);
     safeRemove(REFRESH_KEY);
     safeRemove(USER_KEY);
+    safeRemove(ROLE_KEY);
   }
 
   /* ---------------- transparent token refresh ----------------
@@ -78,7 +83,7 @@
         if (!res.ok) return false;
         var data = await res.json();
         if (!data || !data.access_token) return false;
-        saveSession(data.access_token, data.refresh_token);
+        saveSession(data.access_token, data.refresh_token, data.username, data.role);
         return true;
       } catch (_) {
         return false;
@@ -147,7 +152,7 @@
     if (btn) { btn.disabled = false; btn.textContent = "Sign in"; }
 
     if (res && res.ok && res.data && res.data.access_token) {
-      saveSession(res.data.access_token, res.data.refresh_token, res.data.username);
+      saveSession(res.data.access_token, res.data.refresh_token, res.data.username, res.data.role);
       var gate = document.getElementById("sageLoginGate");
       if (gate) gate.remove();
       document.dispatchEvent(new CustomEvent("sage:login"));
@@ -244,6 +249,7 @@
     getToken: getToken,
     getRefreshToken: getRefreshToken,
     getUsername: getUsername,
+    getRole: getRole,
     isLoggedIn: isLoggedIn,
     saveSession: saveSession,
     clearSession: clearSession,

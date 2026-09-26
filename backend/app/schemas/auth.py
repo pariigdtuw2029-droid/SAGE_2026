@@ -14,3 +14,4 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int  # seconds
     username: str
+    role: str

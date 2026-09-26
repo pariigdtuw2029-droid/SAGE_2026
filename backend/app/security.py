@@ -1,25 +1,35 @@
 """
-JWT authentication (Member 4 — security layer).
+JWT authentication + role-based access (Member 4 — security layer).
 
 Design:
-- Single admin/operator account from env vars (SAGE_AUTH_USERNAME /
-  SAGE_AUTH_PASSWORD / SAGE_AUTH_PASSWORD_HASH, see backend/.env.example).
-  No user table for a single-team deployment; add one only if multiple
-  roles are required.
-- SAGE_AUTH_PASSWORD (plaintext in .env) is bcrypt-hashed at login time and
-  compared in constant time. SAGE_AUTH_PASSWORD_HASH (a $2b$... bcrypt
-  string) is accepted as-is, so nothing reversible ever has to be stored.
+- Users come from the SAGE_USERS env var, one "username:password:role"
+  triplet per comma-separated entry (see backend/.env.example):
+
+      SAGE_USERS=admin:sage2026:admin,priya:engpass123:engineer,rahul:revpass:reviewer
+
+  Roles: admin (full), engineer (can upload burn-in data), reviewer
+  (read-only). Unknown roles fall back to "reviewer" (least privilege).
+- Backwards compatibility: if SAGE_USERS is not set, the legacy single-user
+  vars (SAGE_AUTH_USERNAME / SAGE_AUTH_PASSWORD / SAGE_AUTH_PASSWORD_HASH)
+  still work and map to the "admin" role.
+- Passwords are bcrypt-verified at login time and compared via constant-time
+  primitives; nothing reversible is stored anywhere.
 - Tokens are HS256-signed JWTs (PyJWT) with a short TTL, jti, and pinned
-  iss/aud; the secret comes from SAGE_JWT_SECRET and must be set (>= 32
-  chars recommended). The algorithm is pinned server-side — the token's
-  own alg header is never trusted (no "alg: none" / confusion attacks).
+  iss/aud; the secret comes from SAGE_JWT_SECRET (>= 32 chars recommended).
+  The algorithm is pinned server-side — the token's own alg header is never
+  trusted (no "alg: none" / confusion attacks). Each token carries the
+  user's role in the "role" claim.
 - In-memory login rate limiting: 5 failures / 5 min per client IP.
 
 Public surface:
-    create_access_token(sub, ...) -> str
-    decode_token(token)           -> dict
-    get_current_user              -> FastAPI dependency (raises 401)
-    require_auth                  -> alias of get_current_user
+    USERS                       -> {username: {"password": str, "role": str}}
+    ROLES                       -> allowed role names
+    create_access_token(...)    -> str (includes role claim)
+    create_refresh_token(...)   -> str
+    decode_token(token)         -> dict
+    get_current_user            -> FastAPI dependency (raises 401)
+    require_roles(*roles)       -> FastAPI dependency (raises 403)
+    require_write_access        -> dependency: admin or engineer only
 """
 
 from __future__ import annotations
@@ -68,14 +78,65 @@ def _refresh_days() -> int:
         return 7
 
 
-# --- Credential settings ----------------------------------------------------
+# --- Users & roles ----------------------------------------------------------
 
-AUTH_USERNAME = os.getenv("SAGE_AUTH_USERNAME", "admin")
-AUTH_PASSWORD_HASH = os.getenv("SAGE_AUTH_PASSWORD_HASH", "")
+VALID_ROLES = ("admin", "engineer", "reviewer")
+DEFAULT_ROLE = "reviewer"  # least privilege for malformed role values
 
+
+def _parse_users(raw: str | None) -> dict[str, dict[str, str]]:
+    """Parse SAGE_USERS="name:pass:role,..." into {name: {password, role}}."""
+    users: dict[str, dict[str, str]] = {}
+    if not raw:
+        return users
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = entry.split(":")
+        if len(parts) < 2:
+            logger.warning("Ignoring malformed SAGE_USERS entry (need user:pass[:role])")
+            continue
+        username, password = parts[0].strip(), ":".join(parts[1:-1]) if len(parts) > 2 else parts[1]
+        role = parts[-1].strip().lower() if len(parts) >= 3 else DEFAULT_ROLE
+        if not username or not password:
+            logger.warning("Ignoring SAGE_USERS entry with empty username or password")
+            continue
+        if role not in VALID_ROLES:
+            logger.warning("Unknown role '%s' for user '%s' — demoting to '%s'", role, username, DEFAULT_ROLE)
+            role = DEFAULT_ROLE
+        users[username] = {"password": password, "role": role}
+    return users
+
+
+def _build_users() -> dict[str, dict[str, str]]:
+    users = _parse_users(os.getenv("SAGE_USERS"))
+    if users:
+        return users
+    # Legacy single-user fallback -> admin role.
+    if os.getenv("SAGE_AUTH_PASSWORD") or os.getenv("SAGE_AUTH_PASSWORD_HASH"):
+        return {
+            os.getenv("SAGE_AUTH_USERNAME", "admin"): {
+                "password": os.getenv("SAGE_AUTH_PASSWORD", ""),
+                "role": "admin",
+            }
+        }
+    return {}
+
+
+USERS: dict[str, dict[str, str]] = _build_users()
+
+
+def get_user_role(username: str) -> str | None:
+    user = USERS.get(username)
+    return user["role"] if user else None
+
+
+# --- Password hashing ---------------------------------------------------------
 # bcrypt directly (passlib is unmaintained and breaks with bcrypt >= 4.1).
 # bcrypt only operates on <= 72 bytes; longer inputs are pre-hashed with
 # SHA-256 first so long passphrases neither break nor silently truncate.
+
 def _bcrypt_input(plain: str) -> bytes:
     data = plain.encode("utf-8")
     if len(data) > 72:
@@ -92,6 +153,10 @@ def verify_password(plain: str, hashed: str) -> bool:
         return bcrypt.checkpw(_bcrypt_input(plain), hashed.encode("ascii"))
     except (ValueError, TypeError):
         return False
+
+
+def is_bcrypt_hash(value: str) -> bool:
+    return value.startswith(("$2a$", "$2b$", "$2y$"))
 
 # --- In-memory rate limiting (per-process; fine for a single-node deploy) ---
 
@@ -129,28 +194,39 @@ def reset_failed_logins(key: str) -> None:
 
 def create_access_token(
     subject: str,
+    role: str | None = None,
     expires_minutes: int | None = None,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
-    """Mint a short-lived HS256 JWT for `subject` (the username).
+    """Mint a short-lived HS256 JWT for `subject`.
 
     typ="access" distinguishes these from refresh tokens so a refresh
     token can never be replayed as a credential against /api/* routes.
+    The user's role rides along in the "role" claim.
     """
+    claims: dict[str, Any] = {"role": role or get_user_role(subject) or DEFAULT_ROLE}
+    if extra_claims:
+        claims.update(extra_claims)
     return _create_token(
         subject,
         minutes=expires_minutes if expires_minutes is not None else _expire_minutes(),
         typ="access",
-        extra_claims=extra_claims,
+        extra_claims=claims,
     )
 
 
 def create_refresh_token(
     subject: str,
+    role: str | None = None,
     expires_days: int | None = None,
 ) -> str:
     """Mint a long-lived token used only to obtain new access tokens."""
-    return _create_token(subject, minutes=_refresh_days() * 24 * 60, typ="refresh")
+    return _create_token(
+        subject,
+        minutes=_refresh_days() * 24 * 60,
+        typ="refresh",
+        extra_claims={"role": role or get_user_role(subject) or DEFAULT_ROLE},
+    )
 
 
 def _create_token(
@@ -199,13 +275,7 @@ def decode_token(token: str, expected_typ: str = "access") -> dict[str, Any]:
     return payload
 
 
-# --- Password helpers -------------------------------------------------------
-
-def is_bcrypt_hash(value: str) -> bool:
-    return value.startswith(("$2a$", "$2b$", "$2y$"))
-
-
-# --- FastAPI dependency -----------------------------------------------------
+# --- FastAPI dependencies ---------------------------------------------------
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -216,7 +286,7 @@ def get_current_user(
     """
     Dependency guarding protected routes.
 
-    Returns the decoded claims ({"sub": <username>, "jti": ...}) on success.
+    Returns the decoded claims ({"sub", "role", "jti", ...}) on success.
     Raises 401 with WWW-Authenticate: Bearer on any failure.
     """
     if credentials is None or not credentials.credentials:
@@ -254,3 +324,30 @@ def get_current_user(
 
 # Alias so route modules can read naturally.
 require_auth = get_current_user
+
+
+def require_roles(*allowed: str):
+    """Dependency factory: 403 unless the token's role is in `allowed`."""
+    allowed_set = {r.lower() for r in allowed}
+
+    def dependency(current: dict = Depends(get_current_user)) -> dict:
+        role = (current.get("role") or "").lower()
+        if role not in allowed_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Forbidden — requires role: {' or '.join(sorted(allowed_set))}.",
+            )
+        return current
+
+    return dependency
+
+
+def require_write_access(current: dict = Depends(get_current_user)) -> dict:
+    """Uploads / mutations: admins and engineers; reviewers are read-only."""
+    role = (current.get("role") or "").lower()
+    if role not in ("admin", "engineer"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden — reviewers have read-only access.",
+        )
+    return current
