@@ -12,59 +12,228 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 14mm 12mm 14mm 12mm;
+    margin: 12mm 10mm 12mm 10mm;
   }
+
+  /* 1. Global Reset & Print Adjustments */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body::before,
+  body::after,
+  .box::before,
+  .box::after {
+    display: none !important;
+    content: none !important;
+  }
+
+  /* 2. Hide Screen-Only UI Elements */
   aside.sidebar,
   div.console-top,
   nav.subnav-bar,
   div.grid-2,
   div.console-actions,
-  div#reportSummary a.btn,
+  button,
+  #toast,
   h2.box-title {
     display: none !important;
   }
-  body,
-  div.shell,
-  main.console,
-  section.box {
-    background: #ffffff !important;
-    color: #000000 !important;
+
+  /* 3. Shell, Console, and Box Unlocking */
+  div.shell {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
     border: none !important;
-    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  main.console {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
     max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: #ffffff !important;
   }
+
+  .console > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  section.box {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  /* 4. Executive Visual Summary Bar (#reportSummary) */
   #reportSummary {
     display: block !important;
-    margin-bottom: 12px !important;
+    margin: 0 0 10px 0 !important;
+    padding: 0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
+
+  #reportSummary[style*="display: none"],
+  #reportSummary:empty {
+    display: none !important;
+  }
+
   #reportSummary > div {
+    display: flex !important;
     background: #f8fafc !important;
     border: 1px solid #cbd5e1 !important;
-    color: #0f172a !important;
     border-radius: 6px !important;
     padding: 8px 12px !important;
+    box-shadow: none !important;
   }
+
+  #reportSummary,
+  #reportSummary * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  #reportSummary span {
+    color: #0f172a !important;
+  }
+
+  #reportSummary .backlink {
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    font-weight: 500 !important;
+  }
+
+  #reportSummary a.btn {
+    display: none !important;
+  }
+
   #reportSummary .badge {
     border: 1px solid #94a3b8 !important;
     color: #0f172a !important;
     background: #ffffff !important;
     font-weight: 600 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
   }
-  .report-preview {
+
+  #reportSummary .badge.pass,
+  #reportSummary .badge.safe {
+    border-color: #059669 !important;
+    color: #065f46 !important;
+    background: #ecfdf5 !important;
+  }
+
+  #reportSummary .badge.monitor {
+    border-color: #d97706 !important;
+    color: #92400e !important;
+    background: #fffbeb !important;
+  }
+
+  #reportSummary .badge.hold {
+    border-color: #ea580c !important;
+    color: #9a3412 !important;
+    background: #fff7ed !important;
+  }
+
+  #reportSummary .badge.reject {
+    border-color: #dc2626 !important;
+    color: #991b1b !important;
+    background: #fef2f2 !important;
+  }
+
+  #reportSummary .badge.neutral {
+    border-color: #94a3b8 !important;
+    color: #334155 !important;
+    background: #f8fafc !important;
+  }
+
+  /* 5. Report Inspection Preview Text Block */
+  .report-preview,
+  #preview {
+    display: block !important;
     background: #ffffff !important;
     color: #111827 !important;
-    border: 1px solid #d1d5db !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 4px !important;
-    padding: 12px !important;
+    padding: 10px 12px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
     font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
     font-size: 8.5pt !important;
     line-height: 1.35 !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
     page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .report-preview *,
+  #preview * {
+    color: #111827 !important;
+    background: transparent !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 6. Typography & Table Legibility */
+  table, th, td {
+    border-color: #cbd5e1 !important;
+    color: #111827 !important;
+    background: transparent !important;
+  }
+
+  code, pre {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
+    color: #111827 !important;
   }
 }
 </style>
