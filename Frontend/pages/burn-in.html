@@ -430,7 +430,7 @@
     try {
       lotsRes = await window.SAGEAPI.getLots();
     } catch (err) {
-      renderState("Backend Connection Failed", "Unable to reach SAGE backend at http://127.0.0.1:8000. Please ensure the server is running.", true, `
+      renderState("Backend Connection Failed", "Unable to reach the SAGE backend. On a free tier it may be waking up — wait a few seconds and retry. If the problem persists, sign in again from the login page.", true, `
         <button class="btn" onclick="location.reload()">Retry Connection</button>
       `);
       return;

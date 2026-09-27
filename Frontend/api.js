@@ -113,6 +113,12 @@
     return Boolean(getToken());
   }
 
+  // Paths where a 401 is a *normal* response (bad credentials, etc.) and must
+  // NOT trigger the redirect-to-login loop.
+  function isAuthPath(pathname) {
+    return typeof pathname === "string" && pathname.includes("/pages/login.html");
+  }
+
   function getUserRole() {
     const u = getUser();
     return (u && u.role) ? u.role.toLowerCase() : null;
@@ -176,7 +182,17 @@
         if (!res.ok) {
           const errorDetail = (payload && payload.detail) ? payload.detail : `HTTP error ${res.status}`;
           if (res.status === 401) {
+            // Token missing, expired, or invalid. Clear it and send the user to
+            // the sign-in page — staying here only produces "Backend Connection
+            // Failed" noise, since the data endpoints are auth-protected.
             logout();
+            if (!isAuthPath(location.pathname)) {
+              const loginUrl = (typeof location !== "undefined" && location.protocol === "file:")
+                ? "login.html"
+                : "/pages/login.html";
+              const back = encodeURIComponent(location.pathname + location.search);
+              setTimeout(() => { window.location.href = loginUrl + "?redirect=" + back; }, 400);
+            }
           } else if (res.status === 403) {
             try {
               if (typeof window !== "undefined" && window.SAGE && typeof window.SAGE.toast === "function") {
@@ -197,8 +213,8 @@
         clearTimeout(timer);
         const isAbort = err.name === "AbortError";
         const msg = isAbort
-          ? "Request timed out. Backend service may be offline or unresponsive."
-          : "Cannot connect to backend server at " + base;
+          ? "Request timed out. The backend may be waking up or offline — retrying helps on free-tier cold starts."
+          : "Cannot connect to the SAGE backend (network error, not an authentication problem).";
         lastResult = { ok: false, status: 0, error: msg, data: null };
         if (attempt < attempts - 1) {
           await sleep(GET_BACKOFF_MS[attempt] || 5000);
