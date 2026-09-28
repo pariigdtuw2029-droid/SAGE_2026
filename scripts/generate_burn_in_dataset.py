@@ -1,5 +1,6 @@
 """
 Synthetic Burn-In Test Dataset Generator — Hierarchical / Batch-Realistic
+(Leakage-current-only version)
 """
 
 import csv
@@ -24,46 +25,33 @@ LOT_START_DATE = datetime.date(2025, 1, 6)
 
 # Realistic measurement bounds 
 LEAKAGE_MIN, LEAKAGE_MAX = 0.1, 5.0           # µA
-RESISTANCE_MIN, RESISTANCE_MAX = 90.0, 150.0  # Ω
-VTH_MIN, VTH_MAX = 0.8, 1.5                   # V
 
 # Instrument resolution 
 LEAKAGE_RESOLUTION = 0.001     # µA
-RESISTANCE_RESOLUTION = 0.01   # Ω
-VTH_RESOLUTION = 0.001         # V
 
 # --- Label decision thresholds -------------------------------------------
 FAIL_LEAKAGE_DRIFT = 3.30       # +330% or more
-FAIL_RESISTANCE_DRIFT = 0.060   # +6.0% or more
-FAIL_VTH_DRIFT = 0.090          # 0.090 V or more shift
 
 BORDERLINE_LEAKAGE_DRIFT = 1.45
-BORDERLINE_RESISTANCE_DRIFT = 0.048
-BORDERLINE_VTH_DRIFT = 0.072
 
 # --- Traditional (fixed-limit) burn-in pass/fail criteria -----------------
 DATASHEET_LEAKAGE_MAX = 3.0            # µA — must stay at/below this
-DATASHEET_RESISTANCE_RANGE = (95.0, 120.0)   # Ω — must stay within this band
-DATASHEET_VTH_RANGE = (1.00, 1.40)     # V — must stay within this band
 
 # --- Sudden / step-change failures -----------------------------------------
 STEP_CHANGE_RATE = 0.04   # fraction of components that get a sudden jump
 STEP_CHANGE_CHECKPOINTS = [2, 3]   # which checkpoint index it can hit (96h, 168h)
 STEP_CHANGE_LEAKAGE_JUMP = (3.0, 8.0)     # multiplicative jump
-STEP_CHANGE_RESISTANCE_JUMP = (1.5, 3.0)  # multiplicative jump
-STEP_CHANGE_VTH_JUMP = (0.10, 0.30)       # additive jump (V)
 
 # --- Data-quality corruption (logging artifacts, not physical reality) -----
 MISSING_READING_RATE = 0.015   # per eligible cell, blanked out
 BAD_SENSOR_RATE = 0.005        # per eligible cell, replaced with a fault code
 SENSOR_FAULT_VALUE = -1.0      # implausible sentinel (real value can't be negative)
 
-# Stress-type sensitivity multipliers
+# Stress-type sensitivity multipliers (leakage only)
 STRESS_SENSITIVITY = {
-    #                    leakage  resistance  vth
-    "Thermal-High":    (1.35,    1.05,       0.90),
-    "Radiation-Low":   (0.90,    1.00,       1.45),
-    "Cycling-Medium":  (1.00,    1.35,       1.00),
+    "Thermal-High":    1.35,
+    "Radiation-Low":   0.90,
+    "Cycling-Medium":  1.00,
 }
 
 # Illustrative numeric stress levels
@@ -114,8 +102,6 @@ def build_batch_profiles(rng, np_rng):
             "test_start_dt": test_start_dt,
             # Baseline offsets: some lots run leakier/tighter than others
             "leak_offset": rng.uniform(-0.15, 0.15),
-            "res_offset": rng.uniform(-4.0, 4.0),
-            "vth_offset": rng.uniform(-0.05, 0.05),
             # Quality bias: some lots are just built better/worse 
             "severity_bias": clip(float(np_rng.lognormal(mean=0.0, sigma=0.35)), 0.4, 2.5),
             # Low sigma -> tightly controlled lot (low variance).
@@ -138,15 +124,13 @@ def generate_checkpoint_timestamps(rng, batch_profile):
 
 
 def generate_component_trace(rng, np_rng, batch_profile, stress_type):
-    leak_mult, res_mult, vth_mult = STRESS_SENSITIVITY[stress_type]
+    leak_mult = STRESS_SENSITIVITY[stress_type]
 
     base_severity = float(np_rng.beta(1.6, 5.0)) * 0.9
     within_batch_noise = float(np_rng.lognormal(mean=0.0, sigma=batch_profile["spread_sigma"]))
     severity = base_severity * batch_profile["severity_bias"] * within_batch_noise
 
     leak_severity = severity * leak_mult
-    res_severity = severity * res_mult
-    vth_severity = severity * vth_mult
 
     # --- Leakage current (µA) --------------------------------------------
     leak_0 = clip(rng.uniform(0.1, 1.0) + batch_profile["leak_offset"],
@@ -158,32 +142,10 @@ def generate_component_trace(rng, np_rng, batch_profile, stress_type):
         noisy = leakage[-1] + growth + instrument_noise
         leakage.append(clip(noisy, LEAKAGE_MIN, LEAKAGE_MAX))
 
-    # --- Resistance (Ω) ----------------------------------------------------
-    res_0 = clip(rng.uniform(92, 110) + batch_profile["res_offset"],
-                 RESISTANCE_MIN, RESISTANCE_MAX)
-    resistance = [res_0]
-    for _ in range(3):
-        growth = res_0 * res_severity * rng.uniform(0.01, 0.05)
-        instrument_noise = rng.gauss(0, 0.35)
-        noisy = resistance[-1] + growth + instrument_noise
-        resistance.append(clip(noisy, RESISTANCE_MIN, RESISTANCE_MAX))
-
-    # --- Threshold voltage (V) ----------------------------------------------
-    vth_0 = clip(rng.uniform(1.1, 1.4) + batch_profile["vth_offset"],
-                 VTH_MIN, VTH_MAX)
-    vth = [vth_0]
-    for _ in range(3):
-        shift = vth_0 * vth_severity * rng.uniform(0.01, 0.06)
-        instrument_noise = rng.gauss(0, 0.006)
-        noisy = vth[-1] - shift + instrument_noise
-        vth.append(clip(noisy, VTH_MIN, VTH_MAX))
-
     # Round to realistic instrument resolution
     leakage = [round_to_resolution(v, LEAKAGE_RESOLUTION) for v in leakage]
-    resistance = [round_to_resolution(v, RESISTANCE_RESOLUTION) for v in resistance]
-    vth = [round_to_resolution(v, VTH_RESOLUTION) for v in vth]
 
-    return leakage, resistance, vth
+    return leakage
 
 
 def generate_stress_level(rng, stress_type):
@@ -196,41 +158,26 @@ def generate_stress_level(rng, stress_type):
     return value, spec["unit"]
 
 
-def classify_traditional_result(leakage, resistance, vth):
+def classify_traditional_result(leakage):
     leak_ok = leakage[-1] <= DATASHEET_LEAKAGE_MAX
-    res_ok = DATASHEET_RESISTANCE_RANGE[0] <= resistance[-1] <= DATASHEET_RESISTANCE_RANGE[1]
-    vth_ok = DATASHEET_VTH_RANGE[0] <= vth[-1] <= DATASHEET_VTH_RANGE[1]
-    return "Pass" if (leak_ok and res_ok and vth_ok) else "Fail"
+    return "Pass" if leak_ok else "Fail"
 
 
-def inject_step_change(rng, leakage, resistance, vth):
+def inject_step_change(rng, leakage):
     if rng.random() >= STEP_CHANGE_RATE:
-        return leakage, resistance, vth, False
+        return leakage, False
 
-    metric = rng.choice(["leakage", "resistance", "vth"])
     idx = rng.choice(STEP_CHANGE_CHECKPOINTS)
+    factor = rng.uniform(*STEP_CHANGE_LEAKAGE_JUMP)
+    for i in range(idx, 4):
+        leakage[i] = clip(leakage[i] * factor, LEAKAGE_MIN, LEAKAGE_MAX)
 
-    if metric == "leakage":
-        factor = rng.uniform(*STEP_CHANGE_LEAKAGE_JUMP)
-        for i in range(idx, 4):
-            leakage[i] = clip(leakage[i] * factor, LEAKAGE_MIN, LEAKAGE_MAX)
-    elif metric == "resistance":
-        factor = rng.uniform(*STEP_CHANGE_RESISTANCE_JUMP)
-        for i in range(idx, 4):
-            resistance[i] = clip(resistance[i] * factor, RESISTANCE_MIN, RESISTANCE_MAX)
-    else:
-        delta = rng.uniform(*STEP_CHANGE_VTH_JUMP) * rng.choice([-1, 1])
-        for i in range(idx, 4):
-            vth[i] = clip(vth[i] + delta, VTH_MIN, VTH_MAX)
-
-    return leakage, resistance, vth, True
+    return leakage, True
 
 
 def corrupt_readings(rng, record):
     eligible_fields = [
         "Leakage_24h", "Leakage_96h", "Leakage_168h",
-        "Resistance_24h", "Resistance_96h", "Resistance_168h",
-        "Vth_24h", "Vth_96h", "Vth_168h",
     ]
     num_missing = 0
     num_bad = 0
@@ -245,19 +192,13 @@ def corrupt_readings(rng, record):
     return record, num_missing, num_bad
 
 
-def classify_label(leakage, resistance, vth):
+def classify_label(leakage):
     leak_drift = (leakage[-1] - leakage[0]) / max(leakage[0], 1e-6)
-    res_drift = (resistance[-1] - resistance[0]) / max(resistance[0], 1e-6)
-    vth_drift = abs(vth[-1] - vth[0])
 
-    if (leak_drift > FAIL_LEAKAGE_DRIFT
-            or res_drift > FAIL_RESISTANCE_DRIFT
-            or vth_drift > FAIL_VTH_DRIFT):
+    if leak_drift > FAIL_LEAKAGE_DRIFT:
         return "Fail"
 
-    if (leak_drift > BORDERLINE_LEAKAGE_DRIFT
-            or res_drift > BORDERLINE_RESISTANCE_DRIFT
-            or vth_drift > BORDERLINE_VTH_DRIFT):
+    if leak_drift > BORDERLINE_LEAKAGE_DRIFT:
         return "Borderline"
 
     return "Safe"
@@ -280,12 +221,12 @@ def generate_dataset(num_records=NUM_RECORDS, seed=RANDOM_SEED):
         batch_id = rng.choices(batch_ids, weights=batch_weights, k=1)[0]
         stress_type = rng.choice(STRESS_TYPES)
 
-        leakage, resistance, vth = generate_component_trace(
+        leakage = generate_component_trace(
             rng, np_rng, batch_profiles[batch_id], stress_type
         )
-        leakage, resistance, vth, had_step_change = inject_step_change(rng, leakage, resistance, vth)
-        label = classify_label(leakage, resistance, vth)
-        traditional_result = classify_traditional_result(leakage, resistance, vth)
+        leakage, had_step_change = inject_step_change(rng, leakage)
+        label = classify_label(leakage)
+        traditional_result = classify_traditional_result(leakage)
         stress_level, stress_unit = generate_stress_level(rng, stress_type)
         timestamps = generate_checkpoint_timestamps(rng, batch_profiles[batch_id])
 
@@ -305,14 +246,6 @@ def generate_dataset(num_records=NUM_RECORDS, seed=RANDOM_SEED):
             "Leakage_24h": leakage[1],
             "Leakage_96h": leakage[2],
             "Leakage_168h": leakage[3],
-            "Resistance_0h": resistance[0],
-            "Resistance_24h": resistance[1],
-            "Resistance_96h": resistance[2],
-            "Resistance_168h": resistance[3],
-            "Vth_0h": vth[0],
-            "Vth_24h": vth[1],
-            "Vth_96h": vth[2],
-            "Vth_168h": vth[3],
             "Traditional_Test_Result": traditional_result,
             "Label": label,
         }
@@ -332,8 +265,6 @@ FIELDNAMES = [
     "Proxy_Stress", "Stress_Level", "Stress_Unit",
     "Timestamp_0h", "Timestamp_24h", "Timestamp_96h", "Timestamp_168h",
     "Leakage_0h", "Leakage_24h", "Leakage_96h", "Leakage_168h",
-    "Resistance_0h", "Resistance_24h", "Resistance_96h", "Resistance_168h",
-    "Vth_0h", "Vth_24h", "Vth_96h", "Vth_168h",
     "Traditional_Test_Result", "Label",
 ]
 

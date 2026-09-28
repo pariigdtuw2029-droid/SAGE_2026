@@ -81,22 +81,22 @@ def test_real_database_lot_components():
     Session = sessionmaker(bind=engine)
     db = Session()
     try:
-        # 1. ISRO-SCL-250113-02 -> C504
-        comps_1 = crud.get_lot_components("ISRO-SCL-250113-02", db=db)
+        # 1. ISRO-SCL-250106-01 -> C504
+        comps_1 = crud.get_lot_components("ISRO-SCL-250106-01", db=db)
         c_ids_1 = [c["component_id"] for c in comps_1]
         assert "C504" in c_ids_1
         c504 = next(c for c in comps_1 if c["component_id"] == "C504")
-        assert c504["lot_id"] == "ISRO-SCL-250113-02"
+        assert c504["lot_id"] == "ISRO-SCL-250106-01"
         assert c504["decision"] == "HOLD"
         assert c504["risk_level"] == "MEDIUM"
         assert "C501" not in c_ids_1  # exact lot filter check
 
-        # 2. ISRO-SCL-250421-16 -> C501
-        comps_2 = crud.get_lot_components("ISRO-SCL-250421-16", db=db)
+        # 2. ISRO-SCL-250217-07 -> C501
+        comps_2 = crud.get_lot_components("ISRO-SCL-250217-07", db=db)
         c_ids_2 = [c["component_id"] for c in comps_2]
         assert "C501" in c_ids_2
         c501 = next(c for c in comps_2 if c["component_id"] == "C501")
-        assert c501["lot_id"] == "ISRO-SCL-250421-16"
+        assert c501["lot_id"] == "ISRO-SCL-250217-07"
         assert c501["decision"] == "PASS"
         assert "C504" not in c_ids_2  # exact lot filter check
     finally:

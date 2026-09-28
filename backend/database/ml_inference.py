@@ -55,6 +55,7 @@ DRIFT_ARTIFACT = "drift_prediction_models.joblib"
 DRIFT_ARTIFACT_LEGACY = "drift_prediction_model.joblib"
 SHAP_BUNDLE_ARTIFACT = "anomaly_shap_bundle.joblib"
 CONFIG_ARTIFACT = "config.json"
+RELIABILITY_BUNDLE_ARTIFACT = "reliability_bundle.joblib"
 
 MODEL_VERSION = "sage-1.1"          # reported on every stored row
 FALLBACK_MODEL_VERSION = "fallback-stats"
@@ -230,18 +231,39 @@ def model_config() -> dict:
 
 
 @lru_cache(maxsize=1)
+def load_reliability_bundle() -> Optional[dict]:
+    """`models/reliability_bundle.joblib` (tuned Module C bundle), None when absent."""
+    path = _artifact_path(RELIABILITY_BUNDLE_ARTIFACT)
+    if not path.exists():
+        return None
+    try:
+        import joblib
+        return joblib.load(path)
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=1)
 def reliability_config() -> dict:
     """
-    Effective Module C constants: config.json["module_c"] over the code defaults.
+    Effective Module C constants: config.json["module_c"] or reliability_bundle.joblib over code defaults.
     Cached — a re-tune requires a process restart (or `reliability_config.cache_clear()`).
     """
     module_c = model_config().get("module_c", {}) or {}
+    rel_bundle = load_reliability_bundle() or {}
 
     def num(key: str, default: float) -> float:
-        try:
-            return float(module_c.get(key, default))
-        except (TypeError, ValueError):
-            return default
+        if key in module_c:
+            try:
+                return float(module_c[key])
+            except (TypeError, ValueError):
+                pass
+        if key in rel_bundle:
+            try:
+                return float(rel_bundle[key])
+            except (TypeError, ValueError):
+                pass
+        return default
 
     return {
         "weight_anomaly": num("weight_anomaly", WEIGHT_ANOMALY),
@@ -400,28 +422,46 @@ def _drift_feature_matrix(df: pd.DataFrame, bundle: dict) -> Tuple[pd.DataFrame,
     df["elapsed_96h"] = _elapsed_hours(df, "96h", 96.0)
     df["elapsed_168h"] = _elapsed_hours(df, "168h", 168.0)
 
+    for col in feature_cols_raw:
+        if col not in df.columns:
+            df[col] = np.nan
     df.loc[:, feature_cols_raw] = bundle["imputer"].transform(df[feature_cols_raw])
 
     for m in PARAMETERS:
-        df[f"{m}_slope"] = (df[f"{m}_24h"] - df[f"{m}_0h"]) / df["elapsed_24h"].replace(0, 1e-9)
+        if f"{m}_24h" in df.columns and f"{m}_0h" in df.columns:
+            df[f"{m}_slope"] = (df[f"{m}_24h"] - df[f"{m}_0h"]) / df["elapsed_24h"].replace(0, 1e-9)
 
-    feature_cols_num = feature_cols_raw + [
-        "Stress_Level", "elapsed_24h", "Leakage_slope", "Resistance_slope", "Vth_slope",
-    ]
+    feature_cols_num = bundle.get("feature_cols_num")
+    if not feature_cols_num:
+        feature_cols_num = feature_cols_raw + ["Stress_Level", "elapsed_24h"] + [
+            f"{m}_slope" for m in PARAMETERS if f"{m}_slope" in df.columns
+        ]
+    for c in feature_cols_num:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    cat_cols = bundle.get("cat_cols", ["Proxy_Stress", "Part_Type"])
     X = pd.get_dummies(
-        df[feature_cols_num + ["Proxy_Stress", "Part_Type"]],
-        columns=["Proxy_Stress", "Part_Type"],
+        df[feature_cols_num + cat_cols],
+        columns=cat_cols,
     )
-    X = X.reindex(columns=bundle["feature_columns"], fill_value=0)
+    target_columns = bundle.get("train_columns", bundle.get("feature_columns"))
+    X = X.reindex(columns=target_columns, fill_value=0)
     return X, df
 
 
 def _reconstruct_drift(raw: np.ndarray, df: pd.DataFrame) -> pd.DataFrame:
     """Map model outputs back to physical units (log1p for Leakage, delta for the rest)."""
     out = pd.DataFrame(index=df.index)
-    out["Leakage_168h"] = np.expm1(raw[:, 1])
-    out["Resistance_168h"] = df["Resistance_24h"].values + raw[:, 3]
-    out["Vth_168h"] = df["Vth_24h"].values + raw[:, 5]
+    n_out = raw.shape[1] if len(raw.shape) > 1 else 1
+    if n_out == 2:
+        out["Leakage_168h"] = np.expm1(raw[:, 1])
+    else:
+        out["Leakage_168h"] = np.expm1(raw[:, 1])
+        if n_out >= 4 and "Resistance_24h" in df.columns:
+            out["Resistance_168h"] = df["Resistance_24h"].values + raw[:, 3]
+        if n_out >= 6 and "Vth_24h" in df.columns:
+            out["Vth_168h"] = df["Vth_24h"].values + raw[:, 5]
     return out
 
 
@@ -458,8 +498,9 @@ def run_module_b(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     rf_point = _reconstruct_drift(np.asarray(rf_pred), df)
     gb_point = _reconstruct_drift(np.asarray(gb_pred), df)
 
+    active_params = [m for m in PARAMETERS if f"{m}_168h" in point.columns and f"{m}_24h" in df.columns]
     result = pd.DataFrame({"Component_ID": df["Component_ID"].values})
-    for m in PARAMETERS:
+    for m in active_params:
         result[f"Pred_{m}_168h"] = point[f"{m}_168h"].values
         result[f"Interval_Low_{m}"] = lower[f"{m}_168h"].values
         result[f"Interval_High_{m}"] = upper[f"{m}_168h"].values
@@ -471,24 +512,45 @@ def run_module_b(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         ).values
         result[f"Disagreement_{m}"] = (rf_point[f"{m}_168h"] - gb_point[f"{m}_168h"]).abs().values
 
-    # --- Predicted_Drift_Score: max relative drift, normalized to its 99th pct ---
-    severity = result[[f"Predicted_Drift_{m}" for m in PARAMETERS]].max(axis=1)
-    bound = severity.quantile(0.99)
-    result["Predicted_Drift_Score"] = (severity.clip(upper=bound) / max(bound, 1e-9) * 100).clip(0, 100).values
+    # --- Predicted_Drift_Score: max relative drift, normalized to its bound ---
+    rel_bundle = load_reliability_bundle()
+    pred_drift_cols = [f"Predicted_Drift_{m}" for m in active_params]
+    if pred_drift_cols:
+        severity = result[pred_drift_cols].max(axis=1)
+        if rel_bundle and "drift_score_bound" in rel_bundle:
+            bound = float(rel_bundle["drift_score_bound"])
+        else:
+            bound = float(severity.quantile(0.99)) if len(severity) else 1.0
+        result["Predicted_Drift_Score"] = (severity.clip(upper=bound) / max(bound, 1e-9) * 100).clip(0, 100).values
+    else:
+        result["Predicted_Drift_Score"] = 0.0
 
     # --- Uncertainty_Score: 0.6 · aleatoric (interval width) + 0.4 · epistemic (RF/GB gap) ---
-    iw = result[[f"Interval_Width_{m}" for m in PARAMETERS]]
-    iw_bounds = iw.quantile(0.99).clip(lower=1e-9)
-    aleatoric = ((iw / iw_bounds).clip(upper=cfg["uncertainty_ratio_cap"]).max(axis=1) * 100).clip(0, 100)
+    iw_cols = [f"Interval_Width_{m}" for m in active_params]
+    dis_cols = [f"Disagreement_{m}" for m in active_params]
+    if iw_cols:
+        iw = result[iw_cols]
+        iw_bounds = rel_bundle.get("iw_bounds") if rel_bundle else None
+        if iw_bounds:
+            iw_bounds_s = pd.Series({c: iw_bounds.get(c, iw[c].quantile(0.99)) for c in iw_cols}).clip(lower=1e-9)
+        else:
+            iw_bounds_s = iw.quantile(0.99).clip(lower=1e-9)
+        aleatoric = ((iw / iw_bounds_s).clip(upper=cfg["uncertainty_ratio_cap"]).max(axis=1) * 100).clip(0, 100)
 
-    dis = result[[f"Disagreement_{m}" for m in PARAMETERS]]
-    dis_bounds = dis.quantile(0.99).clip(lower=1e-9)
-    epistemic = ((dis / dis_bounds).clip(upper=cfg["uncertainty_ratio_cap"]).max(axis=1) * 100).clip(0, 100)
+        dis = result[dis_cols]
+        dis_bounds = rel_bundle.get("dis_bounds") if rel_bundle else None
+        if dis_bounds:
+            dis_bounds_s = pd.Series({c: dis_bounds.get(c, dis[c].quantile(0.99)) for c in dis_cols}).clip(lower=1e-9)
+        else:
+            dis_bounds_s = dis.quantile(0.99).clip(lower=1e-9)
+        epistemic = ((dis / dis_bounds_s).clip(upper=cfg["uncertainty_ratio_cap"]).max(axis=1) * 100).clip(0, 100)
 
-    result["Uncertainty_Score"] = (
-        cfg["uncertainty_aleatoric_weight"] * aleatoric
-        + cfg["uncertainty_epistemic_weight"] * epistemic
-    ).clip(0, 100).round(1).values
+        result["Uncertainty_Score"] = (
+            cfg["uncertainty_aleatoric_weight"] * aleatoric
+            + cfg["uncertainty_epistemic_weight"] * epistemic
+        ).clip(0, 100).round(1).values
+    else:
+        result["Uncertainty_Score"] = 0.0
 
     # --- Slope_Reject_Flag: predicted drift rate vs the Safe-population slope ---
     safety_slope = bundle.get("safety_slope")
@@ -501,14 +563,15 @@ def run_module_b(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     else:
         denom = (df["elapsed_168h"] - df["elapsed_24h"]).replace(0, 1e-9).values
         flag = np.zeros(len(result), dtype=bool)
-        for m in PARAMETERS:
-            rate = np.abs(
-                (result[f"Pred_{m}_168h"].values - df[f"{m}_24h"].values) / denom
-            )
-            try:
-                flag |= rate > float(safety_slope[m])
-            except (KeyError, TypeError, ValueError):
-                warnings.append(f"Module B safety_slope is missing '{m}'; that parameter is not slope-checked.")
+        for m in active_params:
+            if m in safety_slope:
+                rate = np.abs(
+                    (result[f"Pred_{m}_168h"].values - df[f"{m}_24h"].values) / denom
+                )
+                try:
+                    flag |= rate > float(safety_slope[m])
+                except (KeyError, TypeError, ValueError):
+                    warnings.append(f"Module B safety_slope is missing '{m}'; that parameter is not slope-checked.")
         result["Slope_Reject_Flag"] = flag
 
     result["model_version"] = MODEL_VERSION
@@ -704,8 +767,12 @@ def drift_shap_top_features(df: pd.DataFrame, top_k: int = 2,
     X, feats = _drift_feature_matrix(df, bundle)
     feature_names = list(X.columns)
 
-    # index into the 6 reconstructed targets: (Leakage, Resistance, Vth) × (96h, 168h)
-    target_idx = {"Leakage": 1, "Resistance": 3, "Vth": 5}
+    # index into the reconstructed targets:
+    n_outputs = getattr(bundle["rf"], "n_outputs_", 2)
+    if n_outputs == 2:
+        target_idx = {"Leakage": 1}
+    else:
+        target_idx = {"Leakage": 1, "Resistance": 3, "Vth": 5}
 
     ids = list(feats["Component_ID"].astype(str))
     if dominant_metric is None:
@@ -973,7 +1040,9 @@ def _attach_explainability(merged: pd.DataFrame, df: pd.DataFrame, warnings: Lis
 
     dominant = {
         str(row["Component_ID"]): max(
-            PARAMETERS, key=lambda m: _num(row.get(f"Predicted_Drift_{m}"))
+            [m for m in PARAMETERS if f"Predicted_Drift_{m}" in row] or ["Leakage"],
+            key=lambda m: _num(row.get(f"Predicted_Drift_{m}")),
+            default="Leakage",
         )
         for _, row in merged[merged["Component_ID"].astype(str).isin(ids)].iterrows()
     }

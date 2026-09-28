@@ -9,6 +9,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import bcrypt
 import jwt
 

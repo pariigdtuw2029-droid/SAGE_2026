@@ -46,16 +46,16 @@ class PipelineConfig:
     absolute_fail_value: str = "Fail"
     label_col: str = "Label"
 
-    params: List[str] = field(default_factory=lambda: ["Leakage", "Resistance", "Vth"])
+    params: List[str] = field(default_factory=lambda: ["Leakage"])
     early_timepoints: List[str] = field(default_factory=lambda: ["0h", "24h"])
 
-    weight_lot_relative: float = 0.40
-    weight_multivariate: float = 0.40
-    weight_drift: float = 0.20
+    weight_lot_relative: float = 0.095
+    weight_multivariate: float = 0.235
+    weight_drift: float = 0.670
 
-    threshold_monitor: float = 30.0
-    threshold_hold: float = 60.0
-    threshold_reject: float = 80.0
+    threshold_monitor: float = 15.5
+    threshold_hold: float = 15.9
+    threshold_reject: float = 96.8
 
     z_score_cap: float = 8.0
 
@@ -95,7 +95,7 @@ class PipelineConfig:
         return cols
 
     def required_input_cols(self):
-        return [self.id_col, self.lot_col, self.group_col, self.absolute_result_col] + self.early_value_cols()
+        return [self.id_col, self.lot_col, self.group_col] + self.early_value_cols()
 
     def to_dict(self):
         return asdict(self)
@@ -157,12 +157,37 @@ def add_drift_features(df: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame
 
 
 class AbsoluteSpecLayer:
+    """Static datasheet-limit check.
+    - When Traditional_Test_Result is present in the input (historical/backtest data),
+      we use that ground truth directly.
+    - When absent (genuinely new live component), we flag anything that exceeded
+      the datasheet limit learned at fit time.
+    """
     def __init__(self, config: PipelineConfig):
         self.config = config
+        self.limits_: Dict[str, float] = {}
+
+    def fit(self, df: pd.DataFrame) -> "AbsoluteSpecLayer":
+        for p in self.config.params:
+            cols = [c for c in df.columns if c.startswith(f"{p}_") and c[len(p)+1:].endswith("h")]
+            if cols:
+                self.limits_[p] = float(df[cols].max().max())
+        return self
 
     def transform(self, df: pd.DataFrame) -> pd.Series:
         col, fail_value = self.config.absolute_result_col, self.config.absolute_fail_value
-        return (df[col].astype(str).str.strip().str.lower() == fail_value.lower()).astype(int)
+        if col in df.columns:
+            return (df[col].astype(str).str.strip().str.lower() == fail_value.lower()).astype(int)
+        exceeded = pd.Series(False, index=df.index)
+        for p in self.config.params:
+            limit = self.limits_.get(p)
+            if limit is None:
+                continue
+            for t in self.config.early_timepoints:
+                c = self.config.value_col(p, t)
+                if c in df.columns:
+                    exceeded |= (df[c] > limit)
+        return exceeded.astype(int)
 
 
 def _robust_median_mad(series: pd.Series) -> Tuple[float, float]:

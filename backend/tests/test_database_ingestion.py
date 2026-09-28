@@ -54,7 +54,8 @@ def test_ingest_small_slice(db):
     counts = crud.count_rows(db=db)
     assert counts["lots"] >= 1
     assert counts["components"] == result.components_created
-    assert counts["measurements"] == result.components_created * 12
+    n_params = 1 if "Resistance_0h" not in df.columns else 3
+    assert counts["measurements"] == result.components_created * (n_params * 4)
 
     # Every stored component has risk + prediction + explanation.
     lots = crud.list_lots(db=db)

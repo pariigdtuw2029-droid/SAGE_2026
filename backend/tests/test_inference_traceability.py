@@ -21,11 +21,11 @@ from database.ingestion import ingest_dataframe
 HEX_64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 AUTHORITATIVE_HASHES = {
-    "anomaly_pipeline.joblib": "6e136cfa5a4e347e20ae9451f3c6d85083918537fabe004a99688df402a5dccc",
-    "drift_prediction_models.joblib": "970ee630691a87505f0005c16b021e9ce9f4c8934fb49beda70e48224c34ec5d",
-    "anomaly_shap_bundle.joblib": "14fb3e7585f354c60e9eea14ca6ef67cebfc874d32c4dce2672bbc05187e3003",
-    "config.json": "52743c455444b2abae12b0e4fbdf0a64ad8e64a0bb6f8f52eebfad09b26804e7",
-    "metadata.json": "776168a61621a729df0956efdd57deec8ab5ec1bc4793ffe834b9de969775793",
+    "anomaly_pipeline.joblib": "324c1cb1aeb83559b7054bba90effea83fde2dcece6e44a086b81a15d0e8bf4f",
+    "drift_prediction_models.joblib": "b78f0450c4413da75b5240a4030be4eeb2a7ff8f40657df40f6ff0fb7f730a2e",
+    "anomaly_shap_bundle.joblib": "b0d8024f62e4b47968baf8e689fe6ca0bb90955506155b9f59ff533a9b3e92bb",
+    "config.json": "f80cc827a145403dd80c656d3817a9a5809ae1cfc7c66f30d273d5bdbe6cfbbb",
+    "metadata.json": "81e300ed88a8ff03d5748868911aceb7cb1da65accb5f1534eda06c8e0f98ac7",
 }
 
 

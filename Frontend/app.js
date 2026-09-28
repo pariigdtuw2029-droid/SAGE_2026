@@ -235,7 +235,7 @@
     `;
   }
 
-  function toast(msg) {
+  function toast(msg, duration = 4000) {
     let t = document.querySelector(".toast");
     if (!t) {
       t = document.createElement("div");
@@ -245,7 +245,7 @@
     t.textContent = msg;
     requestAnimationFrame(() => t.classList.add("show"));
     clearTimeout(t._h);
-    t._h = setTimeout(() => t.classList.remove("show"), 2600);
+    t._h = setTimeout(() => t.classList.remove("show"), duration);
   }
 
   function param(name) {

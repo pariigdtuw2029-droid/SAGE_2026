@@ -1,6 +1,6 @@
 {
   "stack_version": "sage-1.1",
-  "n_training_rows": 6522,
+  "n_training_rows": 5809,
   "n_dataset_rows": 10000,
   "multivariate_groups": [
     "__global__",
@@ -22,14 +22,14 @@
   "source_data": "burn_in_dataset.csv (10,000 components / 20 lots), split by component_split.csv",
   "module_a_fitted_config": {
     "note": "Read from the tuning run (anomaly_detection.ipynb, final cell group). The authoritative copy is inside anomaly_pipeline.joblib — `python -m database stack` prints it live. Values here are for review only.",
-    "weight_lot_relative": 0.28,
-    "weight_multivariate": 0.267,
-    "weight_drift": 0.453,
-    "threshold_monitor": 13.9,
-    "threshold_hold": 14.0,
-    "threshold_reject": 100.0,
+    "weight_lot_relative": 0.095,
+    "weight_multivariate": 0.235,
+    "weight_drift": 0.67,
+    "threshold_monitor": 15.5,
+    "threshold_hold": 15.9,
+    "threshold_reject": 96.8,
     "z_score_cap": 8.0,
-    "caveat": "threshold_reject = max(p99.5 of val Safe scores, hold + 0.1) and the 99.5th percentile landed at 100.0, so REJECT only fires at a saturated risk score. HOLD is the de-facto top decision. Worth knowing before a judge notices it."
+    "caveat": "threshold_reject = max(p99.5 of val Safe scores, hold + 0.1) and the 99.5th percentile landed at 96.8."
   },
   "notes": "Model binaries are produced by the notebooks above. Re-dump them and update config.json's module_c block + this file's module_a_fitted_config after a retune."
 }

@@ -29,6 +29,18 @@
         <a class="subnav-tab" href="component-detail.html" id="burnInDetailLink">03 Component Inspector →</a>
       </nav>
 
+      <!-- Prominent Upload Success Banner on Main Page -->
+      <div id="uploadSuccessBanner" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(90deg, rgba(52,211,153,0.15), rgba(13,22,36,0.95));border:1px solid var(--safe);border-radius:10px;padding:12px 18px;margin-bottom:16px;box-shadow:0 4px 20px rgba(52,211,153,0.15);">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:22px;line-height:1;">✅</span>
+          <div>
+            <div style="font-family:var(--heading);font-size:14px;color:var(--safe);font-weight:600;">CSV Uploaded &amp; Ingested Successfully!</div>
+            <div id="uploadSuccessBannerText" style="font-family:var(--mono);font-size:12px;color:var(--frost);margin-top:2px;"></div>
+          </div>
+        </div>
+        <button type="button" class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="document.getElementById('uploadSuccessBanner').style.display='none'">✕ Dismiss</button>
+      </div>
+
       <!-- Component Screening Metadata Ribbon -->
       <section class="box" id="burnInMetaBar" style="padding:12px 18px;margin-bottom:16px;"></section>
 
@@ -155,6 +167,15 @@
       <button type="button" id="closeDqModalBtn" class="btn ghost" style="padding:4px 10px;font-size:12px;">✕ Close</button>
     </div>
 
+    <!-- Prominent Upload Success / Status Banner in Modal -->
+    <div id="dqBanner" style="display:flex;align-items:center;gap:12px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);border-radius:10px;padding:12px 16px;margin-bottom:18px;">
+      <span id="dqBannerIcon" style="font-size:24px;line-height:1;">✅</span>
+      <div>
+        <div id="dqBannerTitle" style="font-family:var(--heading);font-size:15px;color:var(--safe);font-weight:700;">CSV Uploaded Successfully!</div>
+        <div id="dqBannerSub" style="font-family:var(--mono);font-size:12px;color:var(--frost);margin-top:2px;">994 records ingested into ML screening pipeline.</div>
+      </div>
+    </div>
+
     <!-- Summary KPIs -->
     <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:20px;" id="dqMetricsGrid">
       <div class="kpi" style="padding:10px 12px;">
@@ -271,6 +292,33 @@
       badgeEl.className = `badge ${status === "PASS" ? "safe" : status === "WARNING" ? "monitor" : "reject"}`;
     }
 
+    const dqBanner = document.getElementById("dqBanner");
+    const dqBannerIcon = document.getElementById("dqBannerIcon");
+    const dqBannerTitle = document.getElementById("dqBannerTitle");
+    const dqBannerSub = document.getElementById("dqBannerSub");
+    if (dqBanner) {
+      if (status === "REJECTED") {
+        dqBanner.style.background = "rgba(239,68,68,0.12)";
+        dqBanner.style.border = "1px solid rgba(239,68,68,0.4)";
+        if (dqBannerIcon) dqBannerIcon.textContent = "❌";
+        if (dqBannerTitle) {
+          dqBannerTitle.textContent = "CSV Upload Rejected";
+          dqBannerTitle.style.color = "var(--reject)";
+        }
+        if (dqBannerSub) dqBannerSub.textContent = `File failed validation checks (${dq.rejected_rows || dq.total_rows} records rejected). Please inspect issues below.`;
+      } else {
+        dqBanner.style.background = "rgba(52,211,153,0.12)";
+        dqBanner.style.border = "1px solid rgba(52,211,153,0.4)";
+        if (dqBannerIcon) dqBannerIcon.textContent = "✅";
+        if (dqBannerTitle) {
+          dqBannerTitle.textContent = "CSV Uploaded Successfully!";
+          dqBannerTitle.style.color = "var(--safe)";
+        }
+        const note = (dq.rejected_rows > 0) ? ` (${dq.rejected_rows} faulty sensor records quarantined)` : "";
+        if (dqBannerSub) dqBannerSub.textContent = `${dq.accepted_rows ?? 0} records accepted and screened by ML models${note}.`;
+      }
+    }
+
     const issues = Array.isArray(dq.issues) ? dq.issues : [];
     if (issueCountEl) issueCountEl.textContent = String(issues.length);
 
@@ -296,30 +344,57 @@
     modal.style.display = "flex";
   }
 
+  function dismissDqModal() {
+    const modal = document.getElementById("dataQualityModal");
+    if (modal) modal.style.display = "none";
+
+    if (window._lastUploadedInfo && window._lastUploadedInfo.status !== "REJECTED") {
+      const banner = document.getElementById("uploadSuccessBanner");
+      const bannerText = document.getElementById("uploadSuccessBannerText");
+      if (banner && bannerText) {
+        bannerText.textContent = `File: ${window._lastUploadedInfo.filename} · ${window._lastUploadedInfo.accepted} components ingested & screened into the database.`;
+        banner.style.display = "flex";
+      }
+      window.SAGE.toast(`✅ ${window._lastUploadedInfo.filename} uploaded: ${window._lastUploadedInfo.accepted} components ready!`, 5000);
+    }
+  }
+
   const closeDqBtn = document.getElementById("closeDqModalBtn");
-  if (closeDqBtn) closeDqBtn.addEventListener("click", () => {
-    document.getElementById("dataQualityModal").style.display = "none";
-  });
+  if (closeDqBtn) closeDqBtn.addEventListener("click", dismissDqModal);
   const dismissDqBtn = document.getElementById("dismissDqModalBtn");
-  if (dismissDqBtn) dismissDqBtn.addEventListener("click", () => {
-    document.getElementById("dataQualityModal").style.display = "none";
-  });
+  if (dismissDqBtn) dismissDqBtn.addEventListener("click", dismissDqModal);
 
   // Setup CSV Upload Handler
   const fileInput = document.getElementById("burnInCsvInput");
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files[0];
     if (!file) return;
-    window.SAGE.toast(`Uploading ${file.name} to burn-in ingestion pipeline...`);
+    window.SAGE.toast(`Uploading ${file.name} to burn-in ingestion pipeline...`, 3000);
     try {
       const res = await window.SAGEAPI.uploadBurnIn(file);
       if (res.ok && res.data) {
-        const countMsg = res.data.valid_rows != null
-          ? `${res.data.valid_rows} records validated & accepted`
-          : (res.data.message || "Upload successful");
-        window.SAGE.toast(`Uploaded ${res.data.filename || file.name}: ${countMsg}`);
+        const acceptedCount = res.data.valid_rows != null
+          ? res.data.valid_rows
+          : (res.data.data_quality ? res.data.data_quality.accepted_rows : 0);
+        const countMsg = `${acceptedCount} records validated & accepted`;
+        const fname = res.data.filename || file.name;
+
+        window._lastUploadedInfo = {
+          filename: fname,
+          accepted: acceptedCount,
+          status: (res.data.data_quality && res.data.data_quality.status) || "PASS"
+        };
+
+        const banner = document.getElementById("uploadSuccessBanner");
+        const bannerText = document.getElementById("uploadSuccessBannerText");
+        if (banner && bannerText) {
+          bannerText.textContent = `File: ${fname} · ${acceptedCount} components ingested & screened into the database.`;
+          banner.style.display = "flex";
+        }
+
+        window.SAGE.toast(`✅ Uploaded ${fname}: ${countMsg}`, 5000);
         if (res.data.data_quality) {
-          showDataQualityModal(res.data.data_quality, res.data.filename || file.name);
+          showDataQualityModal(res.data.data_quality, fname);
         }
         await init();
       } else {
@@ -327,13 +402,14 @@
         const errMsg = (typeof res.error === "object" && res.error !== null)
           ? (res.error.message || "Validation error")
           : (res.error || "Failed to process CSV");
-        window.SAGE.toast(`Upload error: ${errMsg}`);
+        window.SAGE.toast(`Upload error: ${errMsg}`, 5000);
         if (dq) {
+          window._lastUploadedInfo = { filename: file.name, accepted: 0, status: "REJECTED" };
           showDataQualityModal(dq, file.name);
         }
       }
     } catch (err) {
-      window.SAGE.toast(`Upload failed: ${err.message || "Network error"}`);
+      window.SAGE.toast(`Upload failed: ${err.message || "Network error"}`, 5000);
     } finally {
       fileInput.value = "";
     }

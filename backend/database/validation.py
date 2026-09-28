@@ -16,26 +16,30 @@ Checks implemented (per the project spec):
 """
 
 from dataclasses import dataclass, field
+import re
 from typing import Dict, List, Optional
 
 import pandas as pd
 
-# The canonical SAGE burn-in schema (scripts/generate_burn_in_dataset.py FIELDNAMES).
+# The canonical SAGE burn-in schema (early-window screening: 0h and 24h checkpoints).
 REQUIRED_COLUMNS: List[str] = [
     "Component_ID", "Batch_ID", "Part_Type", "Part_Family",
     "Proxy_Stress", "Stress_Level", "Stress_Unit",
-    "Timestamp_0h", "Timestamp_24h", "Timestamp_96h", "Timestamp_168h",
-    "Leakage_0h", "Leakage_24h", "Leakage_96h", "Leakage_168h",
-    "Resistance_0h", "Resistance_24h", "Resistance_96h", "Resistance_168h",
-    "Vth_0h", "Vth_24h", "Vth_96h", "Vth_168h",
-    "Traditional_Test_Result", "Label",
+    "Timestamp_0h", "Timestamp_24h",
+    "Leakage_0h", "Leakage_24h",
 ]
 
-# Recognised-but-optional columns: the notebook's batch-grouped train/val/test
-# role for a component, plus the free-form provenance fields and unit annotations.
+# Recognised-but-optional columns: late checkpoints (96h, 168h), ground-truth
+# evaluation labels, the notebook's batch-grouped train/val/test role,
+# free-form provenance fields and unit annotations, as well as multi-metric columns.
 OPTIONAL_COLUMNS: List[str] = [
+    "Timestamp_96h", "Timestamp_168h",
+    "Leakage_96h", "Leakage_168h",
+    "Traditional_Test_Result", "Label",
     "Sensor_ID", "Operator", "Notes", "split",
     "Leakage_Unit", "Resistance_Unit", "Vth_Unit",
+    "Resistance_0h", "Resistance_24h", "Resistance_96h", "Resistance_168h",
+    "Vth_0h", "Vth_24h", "Vth_96h", "Vth_168h",
 ]
 
 # Physically plausible ranges (same bounds as the dataset generator).
@@ -260,7 +264,7 @@ def validate_dataframe(df: pd.DataFrame) -> ValidationReport:
         if _is_missing(cid) or not _valid_component_id(cid):
             report.add(ValidationIssue(idx, str(cid) if not _is_missing(cid) else None,
                                        "Component_ID", "invalid_component_id",
-                                       f"Component ID '{cid}' does not match expected pattern (e.g. C101)."))
+                                       f"Component ID '{cid}' does not match expected pattern (e.g. C101, T0001)."))
             rejected = True
 
         # duplicate component
@@ -278,9 +282,16 @@ def validate_dataframe(df: pd.DataFrame) -> ValidationReport:
             rejected = True
 
         # numeric parameter cells: missing values + non-numeric + range checks
-        for param, (lo, hi) in PLAUSIBLE_RANGES.items():
+        active_params = [
+            param for param in PLAUSIBLE_RANGES
+            if any(f"{param}_{cp}" in df.columns for cp in ("0h", "24h", "96h", "168h"))
+        ]
+        for param in active_params:
+            lo, hi = PLAUSIBLE_RANGES[param]
             for cp in ("0h", "24h", "96h", "168h"):
                 col = f"{param}_{cp}"
+                if col not in df.columns:
+                    continue
                 raw = row.get(col)
 
                 if _is_missing(raw):
@@ -308,6 +319,8 @@ def validate_dataframe(df: pd.DataFrame) -> ValidationReport:
         # timestamp sanity: parseable, ordered, within tolerance of the schedule
         for cp, nominal in CHECKPOINT_HOURS.items():
             col = f"Timestamp_{cp}"
+            if col not in df.columns:
+                continue
             ts = row.get(col)
             if _is_missing(ts):
                 # Flag only; preprocessing falls back to the nominal schedule.
@@ -323,13 +336,14 @@ def validate_dataframe(df: pd.DataFrame) -> ValidationReport:
                 rejected = True
                 continue
             if nominal > 0:
-                delta_h = abs((parsed - pd.to_datetime(row["Timestamp_0h"], errors="coerce")).total_seconds() / 3600
-                              - nominal)
-                if delta_h > TIMESTAMP_TOLERANCE_HOURS:
-                    report.add(ValidationIssue(idx, cid, col, "invalid_timestamp",
-                                               f"{col} deviates {delta_h:.1f}h from nominal {nominal}h for '{cid}'.",
-                                               category=CATEGORY_INVALID_TIMESTAMP, severity="WARNING"))
-                    report.warning_indices.add(idx)
+                t0 = pd.to_datetime(row.get("Timestamp_0h"), errors="coerce")
+                if pd.notna(t0):
+                    delta_h = abs((parsed - t0).total_seconds() / 3600 - nominal)
+                    if delta_h > TIMESTAMP_TOLERANCE_HOURS:
+                        report.add(ValidationIssue(idx, cid, col, "invalid_timestamp",
+                                                   f"{col} deviates {delta_h:.1f}h from nominal {nominal}h for '{cid}'.",
+                                                   category=CATEGORY_INVALID_TIMESTAMP, severity="WARNING"))
+                        report.warning_indices.add(idx)
 
         # Unit consistency check if explicit unit columns are supplied
         KNOWN_UNITS = {
@@ -375,10 +389,13 @@ def validate_dataframe(df: pd.DataFrame) -> ValidationReport:
     return report
 
 
+_COMPONENT_ID_RE = re.compile(r"^[A-Za-z]{1,6}[-_]?\d+[A-Za-z]?$")
+
+
 def _valid_component_id(cid: str) -> bool:
-    """C101 → valid; C-101, 101, c101 (lenient) etc. checked here."""
+    """Validate component identifier: allows C101, T0001, DUT-01, IC101, etc."""
     cid = str(cid).strip()
-    return bool(cid) and cid[0].upper() == "C" and cid[1:].isdigit()
+    return bool(cid) and bool(_COMPONENT_ID_RE.match(cid))
 
 
 def filter_valid_rows(df: pd.DataFrame, report: ValidationReport) -> pd.DataFrame:

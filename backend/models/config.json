@@ -14,19 +14,19 @@
     "shap_source": "anomaly_shap_bundle.joblib (portable plain dict: per-group IsolationForests, background samples, imputation medians)"
   },
   "module_b": {
-    "targets": ["Leakage_168h", "Resistance_168h", "Vth_168h"],
+    "targets": ["Leakage_168h"],
     "models": "tuned RandomForest + MultiOutput GradientBoosting fused by a Ridge meta-learner, with GradientBoosting quantile regressors (alpha 0.05 / 0.95) for the interval",
     "quantile_crossing": "lower/upper swapped where the intervals crossed before reconstruction",
     "safety_slope_source": "99th percentile of |drift rate| (units/hour) measured on Safe TRAIN rows only; used for the early-rejection flag"
   },
   "module_c": {
-    "weight_anomaly": 0.278,
-    "weight_predicted_drift": 0.67,
-    "weight_uncertainty": 0.052,
+    "weight_anomaly": 0.948,
+    "weight_predicted_drift": 0.038,
+    "weight_uncertainty": 0.014,
     "absolute_fail_risk_floor": 65.0,
     "slope_reject_risk_floor": 65.0,
-    "risk_safe_max": 21.8,
-    "risk_borderline_max": 65.0,
+    "risk_safe_max": 14.5,
+    "risk_borderline_max": 28.0,
     "uncertainty_aleatoric_weight": 0.6,
     "uncertainty_epistemic_weight": 0.4,
     "uncertainty_ratio_cap": 1.5,
@@ -52,7 +52,7 @@
     "lots": 20,
     "part_types": ["MOSFET", "Op-Amp IC", "Voltage Regulator IC", "Digital Logic IC"],
     "proxy_stresses": ["Thermal-High", "Radiation-Low", "Cycling-Medium"],
-    "splits": {"train": 6522, "val": 1861, "test": 1617},
-    "labels": {"Safe": 6477, "Borderline": 1839, "Fail": 1684}
+    "splits": {"train": 5809, "val": 1955, "test": 2236},
+    "labels": {"Safe": 6713, "Borderline": 2082, "Fail": 1205}
   }
 }

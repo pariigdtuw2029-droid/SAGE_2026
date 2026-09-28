@@ -5,6 +5,7 @@ import pytest
 
 from database.validation import (
     REQUIRED_COLUMNS,
+    OPTIONAL_COLUMNS,
     DataValidationError,
     filter_valid_rows,
     validate_dataframe,
@@ -106,5 +107,32 @@ def test_filter_valid_rows_keeps_only_good():
 
 def test_required_columns_constant_covers_schema():
     assert "Component_ID" in REQUIRED_COLUMNS
-    assert "Timestamp_168h" in REQUIRED_COLUMNS
-    assert "Vth_168h" in REQUIRED_COLUMNS
+    assert "Timestamp_24h" in REQUIRED_COLUMNS
+    assert "Leakage_24h" in REQUIRED_COLUMNS
+    assert "Timestamp_168h" in OPTIONAL_COLUMNS
+    assert "Leakage_168h" in OPTIONAL_COLUMNS
+
+
+def test_early_burn_in_0_24h_passes_validation():
+    # An early-burn-in dataset only contains 0h and 24h data
+    row = {
+        "Component_ID": "C501",
+        "Batch_ID": "ISRO-SCL-250217-07",
+        "Part_Type": "Voltage Regulator IC",
+        "Part_Family": "7800-Series Linear Regulator",
+        "Proxy_Stress": "Radiation-Low",
+        "Stress_Level": 37.3,
+        "Stress_Unit": "krad",
+        "Timestamp_0h": "2025-03-02 01:00:00",
+        "Timestamp_24h": "2025-03-03 00:41:35",
+        "Leakage_0h": 0.645,
+        "Leakage_24h": 0.678,
+        "Traditional_Test_Result": "Pass",
+        "Label": "Safe",
+    }
+    df = _df([row])
+    report = validate_dataframe(df)
+    assert report.is_valid
+    assert report.valid_rows == 1
+    assert report.rejected_rows == 0
+    assert report.warning_rows == 0
